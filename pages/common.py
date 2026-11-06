@@ -1,6 +1,8 @@
 """Shared session-state and input helpers for the Streamlit pages."""
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import streamlit as st
 
@@ -19,10 +21,17 @@ def new_item() -> dict:
     return {"id": str(uuid4()), "name": "", "price": "", "participants": []}
 
 
+def singapore_today() -> date:
+    """Return today's date in Singapore, independent of server timezone."""
+    return datetime.now(ZoneInfo("Asia/Singapore")).date()
+
+
 def ensure_draft() -> dict:
     """Initialise the current bill once per Streamlit session."""
     if "expense_draft" not in st.session_state:
         st.session_state.expense_draft = {
+            "expense_name": "",
+            "expense_date": singapore_today(),
             "participants": ["Alice", "Bob"],
             "receipt_total": "",
             "billing_mode": BILLING_MODES[0],
