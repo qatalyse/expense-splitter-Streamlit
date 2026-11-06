@@ -19,7 +19,7 @@ if not spreadsheet_url:
         spreadsheet_url = ""
 
 if not spreadsheet_url:
-    st.warning("No Google Sheets URL is configured.")
+    render_status(status, "warning", "No Google Sheets URL is configured.")
     if st.button("Configure database"):
         st.switch_page("pages/1_Bill_Setup.py")
     st.stop()
@@ -40,7 +40,7 @@ if date_filter:
         from datetime import date as date_type
         selected_date = date_type.fromisoformat(date_filter.strip()).isoformat()
     except ValueError:
-        st.error("Enter the date as YYYY-MM-DD.")
+        render_status(status, "error", "Enter the date as YYYY-MM-DD.")
         st.stop()
 else:
     selected_date = None
