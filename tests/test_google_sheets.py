@@ -34,7 +34,7 @@ class DatabaseSchemaTests(unittest.TestCase):
     def test_people_is_a_master_directory(self):
         self.assertEqual(
             SHEET_SCHEMA["People"],
-            ("person_id", "display_name", "created_at", "updated_at"),
+            ("person_id", "display_name", "created_at", "updated_at", "is_active"),
         )
         self.assertNotIn("expense_id", SHEET_SCHEMA["People"])
 
