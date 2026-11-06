@@ -180,7 +180,7 @@ if database_ready:
                             flash_status("setup_status", "success", f"Archived {person['display_name']}.")
                             st.rerun()
                         except (ValueError, GoogleSheetsSetupError) as exc:
-                            st.error(str(exc))
+                            render_status(status, "error", str(exc))
 
     if archived_people:
         with st.expander(f"Archived people ({len(archived_people)})", expanded=False):
@@ -194,7 +194,7 @@ if database_ready:
                         flash_status("setup_status", "success", f"Restored {person['display_name']}.")
                         st.rerun()
                     except (ValueError, GoogleSheetsSetupError) as exc:
-                        st.error(str(exc))
+                        render_status(status, "error", str(exc))
                 name_col.caption(f"{person['display_name']} · Archived")
             st.caption("Archived identities are retained for historical references.")
 
@@ -336,7 +336,7 @@ if st.button("Continue to item entry", type="primary", use_container_width=True)
         st.session_state.pop("expense_saved", None)
         st.switch_page("pages/2_Item_Entry.py")
     except ValueError as exc:
-        st.error(str(exc))
+        render_status(status, "error", str(exc))
 
 
 if st.button("← Home", use_container_width=True):
