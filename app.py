@@ -9,9 +9,21 @@ items_page = st.Page("pages/2_Item_Entry.py", title="Item entry")
 results_page = st.Page("pages/3_Results.py", title="Results")
 history_page = st.Page("pages/4_Expense_History.py", title="Expense history")
 detail_page = st.Page("pages/5_Expense_Detail.py", title="Saved expense")
+consolidation_page = st.Page(
+    "pages/6_Expense_Consolidation.py",
+    title="Consolidate expenses",
+)
 
 navigation = st.navigation(
-    [home_page, setup_page, items_page, results_page, history_page, detail_page],
+    [
+        home_page,
+        setup_page,
+        items_page,
+        results_page,
+        history_page,
+        detail_page,
+        consolidation_page,
+    ],
     position="hidden",
 )
 navigation.run()
