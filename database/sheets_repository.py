@@ -40,10 +40,24 @@ def _read_table(service, spreadsheet_id: str, tab: str) -> list[dict]:
 
 
 def list_people(spreadsheet_url: str, include_archived: bool = False) -> list[dict]:
-    """Return the People directory. Legacy rows without is_active are active."""
+    """Return the People directory after verifying the current People schema."""
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
     try:
-        people = _read_table(_sheets_service(), spreadsheet_id, "People")
+        service = _sheets_service()
+        header_response = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range="'People'!1:1",
+        ).execute()
+        actual_headers = (
+            header_response.get("values", [[]])[0]
+            if header_response.get("values") else []
+        )
+        if actual_headers != list(SHEET_SCHEMA["People"]):
+            raise GoogleSheetsSetupError(
+                "The People tab needs the latest schema. Click Initialize database "
+                "on Page 1 to add or validate the is_active column before managing people."
+            )
+        people = _read_table(service, spreadsheet_id, "People")
     except Exception as exc:
         if isinstance(exc, GoogleSheetsSetupError):
             raise
