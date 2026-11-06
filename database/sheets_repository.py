@@ -69,13 +69,6 @@ def add_person(spreadsheet_url: str, display_name: str) -> dict:
     name = display_name.strip()
     if not name:
         raise ValueError("Enter a display name.")
-    existing = list_people(spreadsheet_url)
-    if any(person["display_name"].strip().casefold() == name.casefold()
-           for person in existing):
-        raise ValueError(
-            f"{name!r} is already in the People directory. Select the existing person instead."
-        )
-
     person = {
         "person_id": str(uuid4()),
         "display_name": name,
@@ -115,16 +108,6 @@ def update_person_name(spreadsheet_url: str, person_id: str, display_name: str) 
     name = display_name.strip()
     if not name:
         raise ValueError("Display name cannot be empty.")
-    people = list_people(spreadsheet_url)
-    if any(
-        person["person_id"] != person_id
-        and person["display_name"].strip().casefold() == name.casefold()
-        for person in people
-    ):
-        raise ValueError(
-            f"{name!r} is already in the active People directory."
-        )
-
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
     try:
         service = _sheets_service()
@@ -335,18 +318,6 @@ def restore_person(spreadsheet_url: str, person_id: str) -> None:
     )
     if target is None:
         raise ValueError("That person no longer exists in the People directory.")
-    if any(
-        person["person_id"] != person_id
-        and person.get("is_active", True)
-        and person["display_name"].strip().casefold()
-            == target["display_name"].strip().casefold()
-        for person in people
-    ):
-        raise ValueError(
-            "Another active person already uses this display name. "
-            "Rename that person before restoring this record."
-        )
-
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
     try:
         service = _sheets_service()
