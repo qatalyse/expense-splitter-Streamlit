@@ -307,6 +307,7 @@ def save_expense_bundle(spreadsheet_url: str, bundle: dict) -> dict:
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
     try:
         service = _sheets_service()
+        _assert_expense_schema(service, spreadsheet_id)
         counts = {}
         for tab, id_column in (
             ("Expenses", "expense_id"),
