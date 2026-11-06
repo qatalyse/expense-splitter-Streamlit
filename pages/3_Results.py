@@ -5,6 +5,7 @@ from database.google_sheets import GoogleSheetsSetupError
 from database.sheets_repository import (
     build_expense_bundle,
     build_update_bundle,
+    get_expense_details,
     save_expense_bundle,
     update_expense_bundle,
 )
@@ -93,6 +94,10 @@ else:
             st.session_state["expense_saved_id"] = save_summary["expense_id"]
             st.session_state.pop("expense_save_bundle", None)
             st.session_state.pop("history_detail_cache", None)
+            if editing_expense_id:
+                refreshed_details = get_expense_details(spreadsheet_url, editing_expense_id)
+                draft["editing_original_details"] = refreshed_details
+                draft["editing_revision"] = int(refreshed_details["expense"].get("revision") or "1")
             st.success(
                 ("Expense updated" if editing_expense_id else "Expense saved")
                 + f" successfully. Reference: {save_summary['expense_id']}"
