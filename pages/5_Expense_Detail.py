@@ -113,7 +113,11 @@ if not is_archived:
         st.session_state["confirm_archive_expense"] = expense_id
 
     if st.session_state.get("confirm_archive_expense") == expense_id:
-        st.warning("Archive this expense? It will disappear from the default history list but can be restored later.")
+        render_status(
+            status,
+            "warning",
+            "Archive this expense? It will disappear from the default history list but can be restored later.",
+        )
         confirm_col, cancel_col = st.columns(2)
         if confirm_col.button("Yes, archive expense", type="primary", use_container_width=True):
             try:
