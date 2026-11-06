@@ -75,6 +75,8 @@ class ExpenseBundleTests(unittest.TestCase):
         )
         self.assertEqual(final_total, self.result.calculated_total)
         self.assertEqual(bundle["Expenses"][0]["calculated_total"], "41.97")
+        self.assertEqual(bundle["Expenses"][0]["revision"], "1")
+        self.assertTrue(bundle["Expenses"][0]["updated_at"])
 
     def test_original_shares_retain_pre_charge_amounts(self):
         bundle = build_expense_bundle(self.draft, self.result)
