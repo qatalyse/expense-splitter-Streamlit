@@ -27,7 +27,7 @@ def ensure_draft() -> dict:
             "receipt_total": "",
             "billing_mode": BILLING_MODES[0],
             "initial_item_count": 3,
-            "items": [new_item() for _ in range(3)],
+            "items": [],
         }
     return st.session_state.expense_draft
 
