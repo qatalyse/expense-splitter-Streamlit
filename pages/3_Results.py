@@ -11,6 +11,7 @@ from database.sheets_repository import (
 )
 from pages.common import clear_draft, ensure_draft, singapore_today
 from presentation.expense_breakdown import render_expense_breakdown
+from ui.status import create_status_slot, flash_status, render_status
 
 draft = ensure_draft()
 result = st.session_state.get("calculated_result")
@@ -18,9 +19,10 @@ result = st.session_state.get("calculated_result")
 st.title("Expense breakdown")
 st.caption("Review each person's share by item. Item amounts already include applicable charges.")
 st.progress(1.0, text="Page 3 of 3 · Results")
+status = create_status_slot("results_status")
 
 if result is None:
-    st.info("No calculation is available yet. Enter your items and calculate first.")
+    render_status(status, "info", "No calculation is available yet. Enter your items and calculate first.")
     if st.button("Go to item entry", type="primary"):
         st.switch_page("pages/2_Item_Entry.py")
     st.stop()
@@ -32,7 +34,7 @@ render_expense_breakdown(expense_name, expense_date, result)
 
 st.subheader("Receipt reconciliation")
 if result.receipt_total is None:
-    st.info("No receipt total was supplied. Reconciliation was skipped.")
+    render_status(status, "info", "No receipt total was supplied. Reconciliation was skipped.")
 else:
     receipt_col, difference_col = st.columns(2)
     receipt_col.metric("Receipt total", f"SGD {result.receipt_total:.2f}")
@@ -42,11 +44,13 @@ else:
         help="Receipt total minus calculated total.",
     )
     if result.reconciled:
-        st.success("Receipt matches within SGD 0.01.")
+        render_status(status, "success", "Receipt matches within SGD 0.01.")
     else:
-        st.warning(
+        render_status(
+            status,
+            "warning",
             "The receipt and calculated totals differ by more than SGD 0.01. "
-            "Check the entered items, discounts and POS rounding."
+            "Check the entered items, discounts and POS rounding.",
         )
 
 st.divider()
@@ -61,9 +65,9 @@ editing_expense_id = draft.get("editing_expense_id")
 
 if saved_expense_id:
     message = "Expense updated successfully" if editing_expense_id else "Expense saved successfully"
-    st.success(f"{message}. Reference: {saved_expense_id}")
+    render_status(status, "success", f"{message}. Reference: {saved_expense_id}")
 elif not database_ready:
-    st.info("Connect and initialize Google Sheets on Page 1 before saving this expense.")
+    render_status(status, "info", "Connect and initialize Google Sheets on Home before saving this expense.")
 else:
     button_label = "Update existing expense" if editing_expense_id else "Save expense to Google Sheets"
     if st.button(button_label, type="primary", use_container_width=True):
@@ -98,15 +102,19 @@ else:
                 refreshed_details = get_expense_details(spreadsheet_url, editing_expense_id)
                 draft["editing_original_details"] = refreshed_details
                 draft["editing_revision"] = int(refreshed_details["expense"].get("revision") or "1")
-            st.success(
+            flash_status(
+                "results_status",
+                "success",
                 ("Expense updated" if editing_expense_id else "Expense saved")
-                + f" successfully. Reference: {save_summary['expense_id']}"
+                + f" successfully. Reference: {save_summary['expense_id']}",
             )
             st.rerun()
         except (ValueError, GoogleSheetsSetupError, ArithmeticError) as exc:
-            st.error(
+            render_status(
+                status,
+                "error",
                 "The operation did not complete. Retry using the same screen; "
-                f"the save bundle is retained. Details: {exc}"
+                f"the save bundle is retained. Details: {exc}",
             )
 
 edit_col, reset_col = st.columns(2)
@@ -117,7 +125,7 @@ if reset_col.button("Start over", use_container_width=True):
     st.session_state.confirm_reset = True
 
 if st.session_state.get("confirm_reset", False):
-    st.warning("Start a new expense? Your current draft and calculation will be cleared.")
+    render_status(status, "warning", "Start a new expense? Your current draft and calculation will be cleared.")
     confirm_col, cancel_col = st.columns(2)
     if confirm_col.button("Yes, start over", type="primary", use_container_width=True):
         clear_draft()
