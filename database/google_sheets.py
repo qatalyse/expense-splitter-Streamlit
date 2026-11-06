@@ -22,6 +22,7 @@ SHEET_SCHEMA: dict[str, tuple[str, ...]] = {
         "display_name",
         "created_at",
         "updated_at",
+        "is_active",
     ),
     "Expenses": (
         "expense_id",
@@ -74,6 +75,12 @@ LEGACY_PARTICIPANTS_HEADERS = (
     "expense_id",
     "name",
     "sort_order",
+)
+LEGACY_PEOPLE_HEADERS = (
+    "person_id",
+    "display_name",
+    "created_at",
+    "updated_at",
 )
 
 _SPREADSHEET_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
@@ -237,6 +244,7 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
         # Preflight all tabs before creating or writing anything.
         headers_to_write: dict[str, list[str]] = {}
         upgraded_legacy_tabs: list[str] = []
+        people_has_existing_rows = False
         for title, expected_headers in SHEET_SCHEMA.items():
             if title not in existing:
                 headers_to_write[title] = list(expected_headers)
@@ -264,6 +272,13 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
                         "records before upgrading the header; initialization made "
                         "no changes."
                     )
+                headers_to_write[title] = list(expected_headers)
+                upgraded_legacy_tabs.append(title)
+            elif title == "People" and actual_headers == list(LEGACY_PEOPLE_HEADERS):
+                people_has_existing_rows = _has_nonempty_data_rows(
+                    service, spreadsheet_id, title
+                )
+                # is_active is an additive column. Existing people remain active.
                 headers_to_write[title] = list(expected_headers)
                 upgraded_legacy_tabs.append(title)
             else:
@@ -301,6 +316,21 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
             spreadsheetId=spreadsheet_id,
             body={"valueInputOption": "RAW", "data": data},
         ).execute()
+
+        if people_has_existing_rows:
+            # The new is_active column defaults existing records to active.
+            people_rows = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range="'People'!A2:A",
+            ).execute().get("values", [])
+            last_row = len(people_rows) + 1
+            if last_row >= 2:
+                service.spreadsheets().values().update(
+                    spreadsheetId=spreadsheet_id,
+                    range=f"'People'!E2:E{last_row}",
+                    valueInputOption="RAW",
+                    body={"values": [[True] for _ in people_rows]},
+                ).execute()
 
         final_metadata = service.spreadsheets().get(
             spreadsheetId=spreadsheet_id,
