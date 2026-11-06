@@ -73,7 +73,7 @@ st.caption(
     "The history list loads summaries only; item breakdowns are fetched when opened."
 )
 
-if not expenses:
+if not expenses and not st.session_state.get("_status_rendered_history_status", False):
     render_status(status, "info", "No matching saved expenses were found.")
 else:
     for expense in expenses:
