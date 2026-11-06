@@ -34,7 +34,7 @@ class DatabaseSchemaTests(unittest.TestCase):
     def test_people_is_a_master_directory(self):
         self.assertEqual(
             SHEET_SCHEMA["People"],
-            ("person_id", "display_name", "created_at", "updated_at"),
+            ("person_id", "display_name", "created_at", "updated_at", "is_active"),
         )
         self.assertNotIn("expense_id", SHEET_SCHEMA["People"])
 
@@ -50,6 +50,12 @@ class DatabaseSchemaTests(unittest.TestCase):
         self.assertIn("expense_id", headers)
         self.assertIn("participant_id", headers)
         self.assertIn("item_id", headers)
+
+    def test_people_directory_includes_archive_status(self):
+        self.assertEqual(
+            SHEET_SCHEMA["People"],
+            ("person_id", "display_name", "created_at", "updated_at", "is_active"),
+        )
 
     def test_legacy_participants_schema_is_recognised(self):
         self.assertEqual(

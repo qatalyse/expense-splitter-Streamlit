@@ -2,6 +2,8 @@
 import pandas as pd
 import streamlit as st
 
+from database.google_sheets import GoogleSheetsSetupError
+from database.sheets_repository import build_expense_bundle, save_expense_bundle
 from pages.common import clear_draft, ensure_draft, singapore_today
 from presentation.share_format import format_all_message, format_person_message
 
@@ -91,12 +93,40 @@ else:
 
 st.divider()
 st.subheader("What next?")
-st.button(
-    "Save to database (coming in a later update)",
-    disabled=True,
-    use_container_width=True,
-    help="Database persistence has not been implemented yet.",
+spreadsheet_url = draft.get("spreadsheet_url", "").strip()
+database_ready = (
+    bool(spreadsheet_url)
+    and st.session_state.get("sheets_database_ready_url") == spreadsheet_url
 )
+saved_expense_id = st.session_state.get("expense_saved_id")
+
+if saved_expense_id:
+    st.success(f"Expense saved successfully. Reference: {saved_expense_id}")
+elif not database_ready:
+    st.info("Connect and initialize Google Sheets on Page 1 before saving this expense.")
+else:
+    if st.button("Save expense to Google Sheets", type="primary", use_container_width=True):
+        try:
+            # Keep the same IDs in session state when retrying a partially completed save.
+            if "expense_save_bundle" not in st.session_state:
+                st.session_state["expense_save_bundle"] = build_expense_bundle(draft, result)
+            with st.spinner("Saving expense and allocations to Google Sheets..."):
+                save_summary = save_expense_bundle(
+                    spreadsheet_url,
+                    st.session_state["expense_save_bundle"],
+                )
+            st.session_state["expense_saved_id"] = save_summary["expense_id"]
+            st.session_state.pop("expense_save_bundle", None)
+            st.success(
+                "Expense saved to Google Sheets. "
+                f"Reference: {save_summary['expense_id']}"
+            )
+            st.rerun()
+        except (ValueError, GoogleSheetsSetupError, ArithmeticError) as exc:
+            st.error(
+                "The save did not complete. You can safely retry; rows already "
+                f"written will be detected and skipped. Details: {exc}"
+            )
 
 edit_col, reset_col = st.columns(2)
 if edit_col.button("← Edit items", use_container_width=True):
