@@ -150,6 +150,7 @@ if person_id:
                         person_id,
                         person_name,
                         selected_expense_ids,
+                        include_archived=include_archived,
                     )
                     message = format_combined_person_message(
                         person_name,
