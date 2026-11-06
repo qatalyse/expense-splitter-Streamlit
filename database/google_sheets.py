@@ -14,7 +14,15 @@ SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 DEFAULT_CREDENTIALS_FILE = "expense-splitter-service.json"
 
 # One spreadsheet holds all expenses. Each tab represents a logical table.
+# People is an independent master directory; Participants links a person to
+# one particular expense. Allocations refer to Participants, not People.
 SHEET_SCHEMA: dict[str, tuple[str, ...]] = {
+    "People": (
+        "person_id",
+        "display_name",
+        "created_at",
+        "updated_at",
+    ),
     "Expenses": (
         "expense_id",
         "expense_name",
@@ -38,7 +46,8 @@ SHEET_SCHEMA: dict[str, tuple[str, ...]] = {
     "Participants": (
         "participant_id",
         "expense_id",
-        "name",
+        "person_id",
+        "name_snapshot",
         "sort_order",
     ),
     "Items": (
@@ -57,6 +66,15 @@ SHEET_SCHEMA: dict[str, tuple[str, ...]] = {
         "final_share",
     ),
 }
+
+# PR #5's original four-tab schema. This can be upgraded automatically only
+# when the Participants tab contains headers but no participant records.
+LEGACY_PARTICIPANTS_HEADERS = (
+    "participant_id",
+    "expense_id",
+    "name",
+    "sort_order",
+)
 
 _SPREADSHEET_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
 
@@ -87,7 +105,6 @@ def _read_secret_config() -> tuple[dict[str, Any] | None, str | None]:
             if credentials_file:
                 return None, str(credentials_file)
     except (FileNotFoundError, KeyError, RuntimeError):
-        # Local JSON fallback is useful during development.
         pass
     return None, None
 
@@ -158,9 +175,7 @@ def _translate_api_error(exc: Exception) -> GoogleSheetsSetupError:
             f"Google Sheets returned HTTP {status}. Check the URL, API enablement "
             "and service-account permissions."
         )
-    return GoogleSheetsSetupError(
-        f"Google Sheets connection failed: {exc}"
-    )
+    return GoogleSheetsSetupError(f"Google Sheets connection failed: {exc}")
 
 
 def test_connection(spreadsheet_url: str) -> dict[str, Any]:
@@ -188,11 +203,22 @@ def test_connection(spreadsheet_url: str) -> dict[str, Any]:
     }
 
 
-def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
-    """Create missing tabs and initialize headers without overwriting user data.
+def _has_nonempty_data_rows(service, spreadsheet_id: str, title: str) -> bool:
+    """Return whether a tab has any non-empty records below its header."""
+    response = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{title}'!A2:ZZ",
+    ).execute()
+    return any(any(str(value).strip() for value in row)
+               for row in response.get("values", []))
 
-    Existing tabs must either be empty or have exactly the expected header row.
-    Any mismatch stops initialization before changes are made.
+
+def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
+    """Create five tabs and initialize headers without overwriting user data.
+
+    Existing tabs must be empty or have the expected headers. The previous
+    four-tab Participants header can be upgraded automatically only when it
+    contains no participant data. No existing data rows are overwritten.
     """
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
     service = _sheets_service()
@@ -208,8 +234,9 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
             for sheet in metadata.get("sheets", [])
         }
 
-        # Preflight every existing tab before creating or writing anything.
+        # Preflight all tabs before creating or writing anything.
         headers_to_write: dict[str, list[str]] = {}
+        upgraded_legacy_tabs: list[str] = []
         for title, expected_headers in SHEET_SCHEMA.items():
             if title not in existing:
                 headers_to_write[title] = list(expected_headers)
@@ -224,7 +251,22 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
 
             if not actual_headers:
                 headers_to_write[title] = list(expected_headers)
-            elif actual_headers != list(expected_headers):
+            elif actual_headers == list(expected_headers):
+                continue
+            elif (
+                title == "Participants"
+                and actual_headers == list(LEGACY_PARTICIPANTS_HEADERS)
+            ):
+                if _has_nonempty_data_rows(service, spreadsheet_id, title):
+                    raise GoogleSheetsSetupError(
+                        "The Participants tab uses the previous four-tab schema "
+                        "and already contains records. Back up and migrate those "
+                        "records before upgrading the header; initialization made "
+                        "no changes."
+                    )
+                headers_to_write[title] = list(expected_headers)
+                upgraded_legacy_tabs.append(title)
+            else:
                 raise GoogleSheetsSetupError(
                     f"The {title!r} tab already has different column headers. "
                     "No changes were made. Rename or back up the existing tab "
@@ -245,20 +287,20 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
                 },
             ).execute()
 
-        # Write all headers (including matching headers on existing tabs) as
-        # a single values batch, both initializing blank tabs and verifying write access.
+        # Header writes are batched. Existing record rows are never cleared.
         data = [
             {
                 "range": f"'{title}'!A1",
                 "majorDimension": "ROWS",
                 "values": [list(SHEET_SCHEMA[title])],
             }
-            for title in SHEET_SCHEMA
+            for title in headers_to_write
         ]
-        service.spreadsheets().values().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={"valueInputOption": "RAW", "data": data},
-        ).execute()
+        if data:
+            service.spreadsheets().values().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"valueInputOption": "RAW", "data": data},
+            ).execute()
 
         final_metadata = service.spreadsheets().get(
             spreadsheetId=spreadsheet_id,
@@ -274,4 +316,5 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
         "tabs": list(SHEET_SCHEMA),
         "created_tabs": missing_titles,
         "headers_initialized": list(headers_to_write),
+        "upgraded_legacy_tabs": upgraded_legacy_tabs,
     }
