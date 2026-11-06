@@ -213,6 +213,8 @@ def build_expense_bundle(draft: dict, result) -> dict:
         "calculation_version": CALCULATION_VERSION,
         "updated_at": created_at,
         "revision": "1",
+        "is_archived": False,
+        "archived_at": "",
     }
 
     participant_rows = []
@@ -400,6 +402,7 @@ def list_expense_summaries(
     search: str = "",
     date_from: str | None = None,
     date_to: str | None = None,
+    include_archived: bool = False,
 ) -> dict:
     """Return a page of expense summaries without loading detail tabs.
 
@@ -419,7 +422,8 @@ def list_expense_summaries(
             all_rows = _read_rows_with_numbers(service, spreadsheet_id, "Expenses")
             candidates = [
                 row for row in all_rows
-                if (not search_text or search_text in str(row.get("expense_name", "")).casefold())
+                if (include_archived or str(row.get("is_archived", "FALSE")).casefold() not in {"true", "1", "yes"})
+                and (not search_text or search_text in str(row.get("expense_name", "")).casefold())
                 and (not date_from or str(row.get("expense_date", "")) >= date_from)
                 and (not date_to or str(row.get("expense_date", "")) <= date_to)
             ]
@@ -447,7 +451,7 @@ def list_expense_summaries(
             start = max(end - page_size, 0)
             chosen_row_numbers = list(reversed(populated_row_numbers[start:end]))
             if chosen_row_numbers:
-                ranges = [f"'Expenses'!A{row}:T{row}" for row in chosen_row_numbers]
+                ranges = [f"'Expenses'!A{row}:V{row}" for row in chosen_row_numbers]
                 response = service.spreadsheets().values().batchGet(
                     spreadsheetId=spreadsheet_id,
                     ranges=ranges,
@@ -817,3 +821,67 @@ def build_update_bundle(draft: dict, result, existing_details: dict) -> dict:
     expense["updated_at"] = _now()
     expense["revision"] = str(int(existing_expense.get("revision") or "1") + 1)
     return bundle
+
+
+
+def _count_active_expenses(service, spreadsheet_id: str) -> int:
+    """Count active expenses from the summary tab only."""
+    rows = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range="'Expenses'!U2:U",
+    ).execute().get("values", [])
+    return sum(
+        1 for row in rows
+        if not row or str(row[0]).strip().casefold() not in {"true", "1", "yes"}
+    )
+
+
+def set_expense_archived(spreadsheet_url: str, expense_id: str, archived: bool,
+                         expected_revision: int | None = None) -> dict:
+    """Soft-delete or restore an expense without deleting its child rows."""
+    spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
+    details = get_expense_details(spreadsheet_url, expense_id)
+    expense = details["expense"]
+    revision = int(expense.get("revision") or "1")
+    if expected_revision is not None and expected_revision != revision:
+        raise GoogleSheetsSetupError(
+            "This expense changed since it was opened. Reload it before trying again."
+        )
+    current_archived = str(expense.get("is_archived", "FALSE")).casefold() in {"true", "1", "yes"}
+    if current_archived == archived:
+        return {"expense_id": expense_id, "archived": archived, "unchanged": True}
+
+    now = _now()
+    service = _sheets_service()
+    try:
+        service.spreadsheets().values().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={
+                "valueInputOption": "RAW",
+                "data": [
+                    {"range": f"'Expenses'!S{expense['_row_number']}", "values": [[now]]},
+                    {"range": f"'Expenses'!T{expense['_row_number']}", "values": [[str(revision + 1)]]},
+                    {"range": f"'Expenses'!U{expense['_row_number']}", "values": [[archived]]},
+                    {"range": f"'Expenses'!V{expense['_row_number']}", "values": [[now if archived else ""]]},
+                ],
+            },
+        ).execute()
+    except Exception as exc:
+        raise _translate_api_error(exc) from exc
+    return {"expense_id": expense_id, "archived": archived, "revision": revision + 1}
+
+
+def duplicate_draft_from_expense_details(details: dict, spreadsheet_url: str) -> dict:
+    """Create a new unsaved draft from an existing expense without its identity."""
+    draft = draft_from_expense_details(details, spreadsheet_url)
+    for key in (
+        "editing_expense_id", "editing_created_at", "editing_revision",
+        "editing_original_details",
+    ):
+        draft.pop(key, None)
+    source_name = draft.get("expense_name", "").strip() or "Expense"
+    draft["expense_name"] = f"Copy of {source_name}"
+    for item in draft["items"]:
+        item.pop("item_id", None)
+    draft["is_duplicate_draft"] = True
+    return draft
