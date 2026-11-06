@@ -12,6 +12,7 @@ from database.sheets_repository import (
     add_person,
     archive_person,
     list_people,
+    restore_person,
     update_person_name,
 )
 from pages.common import (
@@ -256,7 +257,17 @@ if database_ready:
     if archived_people:
         with st.expander(f"Archived people ({len(archived_people)})", expanded=False):
             for person in archived_people:
-                st.caption(f"{person['display_name']} · Archived")
+                person_id = person["person_id"]
+                restore_col, name_col = st.columns([1, 3])
+                if restore_col.button("Restore", key=f"restore_person_{person_id}"):
+                    try:
+                        restore_person(current_url, person_id)
+                        st.session_state.pop("people_directory_cache", None)
+                        st.success(f"Restored {person['display_name']}.")
+                        st.rerun()
+                    except (ValueError, GoogleSheetsSetupError) as exc:
+                        st.error(str(exc))
+                name_col.caption(f"{person['display_name']} · Archived")
             st.caption("Archived identities are retained for historical references.")
 
     # Participant selector uses permanent person IDs; calculations continue to
