@@ -4,3 +4,9 @@ __pycache__/
 venv/
 .env
 .pytest_cache/
+# Google Cloud service account credentials
+expense-splitter-service.json
+
+# Environment and application secrets
+.env
+.streamlit/secrets.toml
