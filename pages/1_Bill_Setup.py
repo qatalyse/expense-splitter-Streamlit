@@ -274,13 +274,20 @@ if database_ready:
     # Participant selector uses permanent person IDs; calculations continue to
     # use the selected display names, with a name-to-ID map retained for saving.
     st.subheader("Participants for this expense")
-    active_by_id = {person["person_id"]: person for person in active_people}
+    prior_person_ids = set(draft.get("participant_ids", []))
+    archived_current_people = [
+        person for person in archived_people
+        if person["person_id"] in prior_person_ids
+    ]
+    selectable_people = active_people + archived_current_people
+    active_by_id = {person["person_id"]: person for person in selectable_people}
     if "setup_selected_person_ids" not in st.session_state:
         prior_names = set(draft.get("participants", []))
         st.session_state["setup_selected_person_ids"] = [
             person["person_id"]
-            for person in active_people
-            if person["display_name"] in prior_names
+            for person in selectable_people
+            if person["person_id"] in prior_person_ids
+            or person["display_name"] in prior_names
         ]
     valid_selection = [
         person_id
@@ -298,9 +305,10 @@ if database_ready:
     def person_option_label(person_id: str) -> str:
         person = active_by_id[person_id]
         name = person["display_name"]
+        suffix = " · Archived (existing expense)" if not person.get("is_active", True) else ""
         if active_name_counts[name.strip().casefold()] > 1:
-            return f"{name} · {person_id[:8]}"
-        return name
+            return f"{name} · {person_id[:8]}{suffix}"
+        return f"{name}{suffix}"
 
     selected_ids = st.multiselect(
         "Select people sharing this bill",
