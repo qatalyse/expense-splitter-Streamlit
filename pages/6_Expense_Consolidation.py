@@ -36,7 +36,7 @@ include_archived = st.checkbox(
 )
 
 try:
-    people_cache_key = ("consolidation_people", spreadsheet_url)
+    people_cache_key = f"consolidation_people::{spreadsheet_url}"
     if people_cache_key not in st.session_state:
         st.session_state[people_cache_key] = list_people(spreadsheet_url)
     people = st.session_state[people_cache_key]
@@ -63,10 +63,8 @@ if person_id:
     selected_person = people_by_id[person_id]
     person_name = selected_person["display_name"]
     summary_cache_key = (
-        "consolidation_summaries",
-        spreadsheet_url,
-        person_id,
-        include_archived,
+        f"consolidation_summaries::{spreadsheet_url}::"
+        f"{person_id}::{include_archived}"
     )
 
     refresh_col, _ = st.columns([1, 3])
