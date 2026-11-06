@@ -38,7 +38,7 @@ Then open the computer's LAN IP and Streamlit port on the phone. Firewall/networ
 
 ## Google Sheets connection
 
-Page 1 includes a Google Sheets URL field, **Test connection**, and **Initialize database** controls below the initial item-row count.
+The Home page includes the Google Sheets URL field, **Test connection**, and **Initialize database** controls below the two main workflow buttons.
 
 ### Local credentials
 
@@ -80,10 +80,10 @@ The spreadsheet URL is kept in the current Streamlit session and copied into the
 - After merging this change, open Bill setup and click **Initialize database** once to add `updated_at` and `revision` to the existing `Expenses` tab. Existing expense rows are retained; `updated_at` is initialized from `created_at` and `revision` to `1`.
 
 ## Application pages
-- **Home:** choose New expense or Expense history.
+- **Home:** choose New expense or Expense history; configure and initialize the Google Sheets connection below these two actions.
 - **Expense history:** browse, search, date-filter, view or edit saved expenses.
 - **Saved expense:** view the original item matrix and copyable monospace breakdown, or load it for editing.
-- **Page 1 — Bill setup:** expense name, expense date (defaults to Singapore's current date), optional receipt total, billing mode, initial number of item rows (default 3), Google Sheets connection controls, and reusable People management (select, add, rename, archive and restore people).
+- **Page 1 — Bill setup:** expense name, expense date (defaults to Singapore's current date), optional receipt total, billing mode, initial number of item rows (default 3), and reusable People management (select, add, rename, archive and restore people).
 - **Page 2 — Item entry:** item names, prices and participant assignments. Add or remove item rows dynamically.
 - **Page 3 — Results:** shared charge-inclusive item/person allocation matrix, copyable WhatsApp breakdowns, receipt reconciliation, and create/update persistence to Google Sheets.
 
