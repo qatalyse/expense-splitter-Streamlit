@@ -882,3 +882,191 @@ def duplicate_draft_from_expense_details(details: dict, spreadsheet_url: str) ->
         item.pop("item_id", None)
     draft["is_duplicate_draft"] = True
     return draft
+
+
+
+def list_person_expense_summaries(
+    spreadsheet_url: str,
+    person_id: str,
+    include_archived: bool = False,
+) -> list[dict]:
+    """List expenses involving one person, with only that person's payable total.
+
+    Reads only Expenses, Participants and Allocations summary relationships.
+    Item rows are not needed until the user selects expenses for consolidation.
+    """
+    spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
+    try:
+        service = _sheets_service()
+        _assert_expense_schema(service, spreadsheet_id)
+
+        participants = _read_table(service, spreadsheet_id, "Participants")
+        participant_by_expense = {
+            row["expense_id"]: row["participant_id"]
+            for row in participants
+            if row.get("person_id") == person_id
+        }
+        if not participant_by_expense:
+            return []
+
+        amounts: dict[str, Decimal] = {}
+        for allocation in _read_table(service, spreadsheet_id, "Allocations"):
+            expense_id = allocation.get("expense_id", "")
+            if (
+                expense_id in participant_by_expense
+                and allocation.get("participant_id")
+                    == participant_by_expense[expense_id]
+            ):
+                amounts[expense_id] = (
+                    amounts.get(expense_id, Decimal("0.00"))
+                    + Decimal(allocation.get("final_share") or "0")
+                )
+
+        summaries = []
+        for expense in _read_table(service, spreadsheet_id, "Expenses"):
+            expense_id = expense.get("expense_id", "")
+            if expense_id not in participant_by_expense:
+                continue
+            archived = str(expense.get("is_archived", "FALSE")).strip().casefold() in {
+                "true", "1", "yes"
+            }
+            if archived and not include_archived:
+                continue
+            summaries.append({
+                **expense,
+                "person_share": amounts.get(expense_id, Decimal("0.00")),
+                "is_archived": archived,
+            })
+
+        return sorted(
+            summaries,
+            key=lambda row: (
+                str(row.get("expense_date", "")),
+                str(row.get("created_at", "")),
+                str(row.get("expense_name", "")).casefold(),
+            ),
+            reverse=True,
+        )
+    except ValueError:
+        raise
+    except Exception as exc:
+        if isinstance(exc, GoogleSheetsSetupError):
+            raise
+        raise _translate_api_error(exc) from exc
+
+
+def get_combined_person_expenses(
+    spreadsheet_url: str,
+    person_id: str,
+    expense_ids: list[str],
+) -> list[dict]:
+    """Load selected expense items and stored shares for one person.
+
+    The detail tabs are read once and filtered in memory for the selected
+    expense IDs. Historical allocations are used verbatim; no recalculation.
+    """
+    selected_ids = list(dict.fromkeys(expense_ids))
+    if not selected_ids:
+        return []
+    spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
+
+    try:
+        service = _sheets_service()
+        _assert_expense_schema(service, spreadsheet_id)
+        summaries = _read_table(service, spreadsheet_id, "Expenses")
+        participants = _read_table(service, spreadsheet_id, "Participants")
+        items = _read_table(service, spreadsheet_id, "Items")
+        allocations = _read_table(service, spreadsheet_id, "Allocations")
+
+        selected = set(selected_ids)
+        summary_by_id = {
+            row.get("expense_id"): row
+            for row in summaries
+            if row.get("expense_id") in selected
+            and str(row.get("is_archived", "FALSE")).strip().casefold()
+                not in {"true", "1", "yes"}
+        }
+        if set(selected_ids) - set(summary_by_id):
+            raise ValueError(
+                "One or more selected expenses are unavailable or archived. "
+                "Refresh the expense list and try again."
+            )
+
+        participant_ids = {
+            row["expense_id"]: row["participant_id"]
+            for row in participants
+            if row.get("expense_id") in selected
+            and row.get("person_id") == person_id
+        }
+        if set(selected_ids) - set(participant_ids):
+            raise ValueError(
+                "The selected person is not a participant in every selected expense."
+            )
+
+        items_by_expense: dict[str, list[dict]] = {}
+        item_by_id = {}
+        for item in items:
+            expense_id = item.get("expense_id")
+            if expense_id in selected:
+                items_by_expense.setdefault(expense_id, []).append(item)
+                item_by_id[item.get("item_id")] = item
+
+        allocations_by_expense: dict[str, list[dict]] = {}
+        for allocation in allocations:
+            if (
+                allocation.get("expense_id") in selected
+                and allocation.get("participant_id")
+                    == participant_ids.get(allocation.get("expense_id"))
+            ):
+                allocations_by_expense.setdefault(
+                    allocation["expense_id"], []
+                ).append(allocation)
+
+        from expense_splitter.models import ItemAllocation
+
+        combined = []
+        for expense_id in selected_ids:
+            expense = summary_by_id[expense_id]
+            item_allocations = []
+            allocations_for_expense = allocations_by_expense.get(expense_id, [])
+            allocation_by_item = {
+                row.get("item_id"): Decimal(row.get("final_share") or "0")
+                for row in allocations_for_expense
+            }
+            for item in sorted(
+                items_by_expense.get(expense_id, []),
+                key=lambda row: int(row.get("sort_order") or 0),
+            ):
+                amount = allocation_by_item.get(item.get("item_id"))
+                if amount is None:
+                    continue
+                item_allocations.append(
+                    ItemAllocation(
+                        item_name=item.get("item_name", ""),
+                        per_person={person_id: amount},
+                        total=amount,
+                    )
+                )
+
+            subtotal = sum(
+                (row.per_person[person_id] for row in item_allocations),
+                Decimal("0.00"),
+            )
+            combined.append({
+                "expense_id": expense_id,
+                "expense_name": expense.get("expense_name", "") or "Expense",
+                "expense_date": expense.get("expense_date", ""),
+                "item_allocations": item_allocations,
+                "person_total": subtotal,
+            })
+
+        return sorted(
+            combined,
+            key=lambda row: (row["expense_date"], row["expense_name"].casefold()),
+        )
+    except ValueError:
+        raise
+    except Exception as exc:
+        if isinstance(exc, GoogleSheetsSetupError):
+            raise
+        raise _translate_api_error(exc) from exc
