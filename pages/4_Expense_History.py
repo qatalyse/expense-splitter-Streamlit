@@ -87,18 +87,22 @@ else:
             archived = str(expense.get("is_archived", "FALSE")).casefold() in {"true", "1", "yes"}
             st.caption(f"{expense_date} · Revision {revision}" + (" · Archived" if archived else ""))
             st.markdown(f"**SGD {Decimal(total):.2f}**" if total else "Total unavailable")
-            view_col, edit_col = st.columns(2)
-            if view_col.button("View breakdown", key=f"view_expense_{expense_id}", use_container_width=True):
+            view_col, edit_col, duplicate_col = st.columns(3)
+            if view_col.button("View", key=f"view_expense_{expense_id}", use_container_width=True):
                 st.session_state["history_selected_expense_id"] = expense_id
                 st.switch_page("pages/5_Expense_Detail.py")
             if edit_col.button(
-                "Edit" if not archived else "View archived",
+                "Edit",
                 key=f"edit_expense_{expense_id}",
                 use_container_width=True,
                 disabled=archived,
             ):
                 st.session_state["history_selected_expense_id"] = expense_id
                 st.session_state["history_open_for_edit"] = True
+                st.switch_page("pages/5_Expense_Detail.py")
+            if duplicate_col.button("Duplicate", key=f"duplicate_expense_{expense_id}", use_container_width=True):
+                st.session_state["history_selected_expense_id"] = expense_id
+                st.session_state["history_duplicate_requested"] = True
                 st.switch_page("pages/5_Expense_Detail.py")
 
 if page > 0:
