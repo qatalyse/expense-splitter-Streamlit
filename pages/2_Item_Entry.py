@@ -94,6 +94,8 @@ if calculate_col.button("Calculate expense", type="primary", use_container_width
     try:
         sync_item_widgets()
         bill = build_bill_from_draft()
+        st.session_state.pop("expense_save_bundle", None)
+        st.session_state.pop("expense_saved_id", None)
         st.session_state.calculated_result = split_expense(bill)
         st.switch_page("pages/3_Results.py")
     except (ValueError, ArithmeticError) as exc:
