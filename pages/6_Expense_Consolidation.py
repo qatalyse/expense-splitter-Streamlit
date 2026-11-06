@@ -68,8 +68,10 @@ if person_id:
     )
 
     refresh_col, _ = st.columns([1, 3])
+    selected_key = f"consolidation_selected_expenses::{person_id}"
     if refresh_col.button("Refresh expenses"):
         st.session_state.pop(summary_cache_key, None)
+        st.session_state.pop(selected_key, None)
         st.session_state.pop("consolidation_message", None)
         st.rerun()
 
@@ -110,7 +112,7 @@ if person_id:
             "Select expenses to combine",
             options=[row["expense_id"] for row in summaries],
             format_func=expense_label,
-            key="consolidation_selected_expenses",
+            key=selected_key,
             placeholder="Choose one or more expenses",
         )
 
