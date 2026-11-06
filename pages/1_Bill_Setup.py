@@ -160,7 +160,14 @@ if initialize_clicked:
                 )
             else:
                 st.success(
-                    "Database is ready. All four tabs and headers already exist."
+                    "Database is ready. All five tabs and headers are present."
+                )
+            upgraded = setup_result.get("upgraded_legacy_tabs", [])
+            if upgraded:
+                st.info(
+                    "Upgraded the empty legacy tab header(s): "
+                    + ", ".join(upgraded)
+                    + ". No records were changed."
                 )
         except (ValueError, GoogleSheetsSetupError) as exc:
             st.error(str(exc))
