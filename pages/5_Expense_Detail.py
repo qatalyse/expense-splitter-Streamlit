@@ -109,17 +109,17 @@ duplicate_clicked = duplicate_col.button(
 )
 
 if not is_archived:
-    if st.button("Archive expense", use_container_width=True):
+    if st.button("Delete expense", use_container_width=True, help="Moves this expense to Archived. You can restore it later.")
         st.session_state["confirm_archive_expense"] = expense_id
 
     if st.session_state.get("confirm_archive_expense") == expense_id:
         render_status(
             status,
             "warning",
-            "Archive this expense? It will disappear from the default history list but can be restored later.",
+            "Delete this expense? It will move to Archived, disappear from the default history list and remain restorable.",
         )
         confirm_col, cancel_col = st.columns(2)
-        if confirm_col.button("Yes, archive expense", type="primary", use_container_width=True):
+        if confirm_col.button("Yes, delete expense", type="primary", use_container_width=True):
             try:
                 set_expense_archived(
                     spreadsheet_url,
@@ -129,7 +129,7 @@ if not is_archived:
                 )
                 st.session_state.pop("history_detail_cache", None)
                 st.session_state.pop("confirm_archive_expense", None)
-                flash_status("detail_status", "success", "Expense archived. You can find it by enabling Show archived expenses.")
+                flash_status("detail_status", "success", "Expense moved to Archived. You can restore it from Expense History.")
                 st.switch_page("pages/4_Expense_History.py")
             except (ValueError, GoogleSheetsSetupError) as exc:
                 render_status(status, "error", str(exc))
