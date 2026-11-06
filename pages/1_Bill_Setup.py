@@ -168,7 +168,7 @@ if database_ready:
                             flash_status("setup_status", "success", "Display name updated. Historical expense names are unchanged.")
                             st.rerun()
                         except (ValueError, GoogleSheetsSetupError) as exc:
-                            st.error(str(exc))
+                            render_status(status, "error", str(exc))
                     if archive_col.button("Archive", key=f"archive_person_{person_id}"):
                         try:
                             archive_person(current_url, person_id)
