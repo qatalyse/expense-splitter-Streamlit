@@ -52,6 +52,8 @@ def sync_item_widgets() -> None:
             f"item_participants_{item_id}", item.get("participants", [])
         )
     st.session_state.pop("calculated_result", None)
+    st.session_state.pop("expense_save_bundle", None)
+    st.session_state.pop("expense_saved_id", None)
 
 
 def add_item() -> None:
@@ -157,5 +159,8 @@ def clear_draft() -> None:
     """Clear draft, calculation and page widget keys before a new expense."""
     prefixes = ("setup_", "item_name_", "item_price_", "item_participants_")
     for key in list(st.session_state.keys()):
-        if key in {"expense_draft", "calculated_result", "confirm_reset"} or key.startswith(prefixes):
+        if key in {
+            "expense_draft", "calculated_result", "confirm_reset",
+            "expense_save_bundle", "expense_saved_id",
+        } or key.startswith(prefixes):
             st.session_state.pop(key, None)
