@@ -84,8 +84,9 @@ The spreadsheet URL is kept in the current Streamlit session and copied into the
 - Existing 20-column expense tabs are upgraded by adding `is_archived` and `archived_at`. Existing expenses are marked active and their archive timestamp is left blank. After merging PR #8, open Home and click **Initialize database** once to apply this additive migration. Expense rows and child records are retained.
 
 ## Application pages
-- **Home:** choose New expense or Expense history; configure and initialize the Google Sheets connection below these two actions.
+- **Home:** choose Create new expense, Open expense history or Consolidate expenses; configure and initialize the Google Sheets connection below these actions.
 - **Expense history:** browse, search, date-filter, view, edit or duplicate saved expenses; optionally show archived expenses.
+- **Expense consolidation:** select a person and combine their stored payable allocations across selected saved expenses into one copyable WhatsApp monospace message. This is a temporary view and does not write a combined record to Google Sheets.
 - **Saved expense:** view the original item matrix and copyable monospace breakdown, edit or duplicate it, and delete/restore it through reversible archiving.
 - **Page 1 — Bill setup:** expense name, expense date (defaults to Singapore's current date), optional receipt total, billing mode, initial number of item rows (default 3), and reusable People management (select, add, rename, archive and restore people).
 - **Page 2 — Item entry:** item names, prices and participant assignments. Add or remove item rows dynamically.
@@ -96,6 +97,8 @@ The in-progress bill is held in Streamlit session state while the user navigates
 ## Where to change things
 - **Navigation:** app.py
 - **Reusable replaceable status messages:** ui/status.py
+- **Combined expense WhatsApp formatting:** presentation/share_format.py
+- **Person-level expense aggregation:** database/sheets_repository.py
 - **Page UI:** pages/1_Bill_Setup.py, pages/2_Item_Entry.py, pages/3_Results.py
 - **Shared page state and input conversion:** pages/common.py
 - **Google Sheets schema and connection setup:** database/google_sheets.py

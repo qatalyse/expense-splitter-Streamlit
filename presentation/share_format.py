@@ -64,3 +64,66 @@ def format_all_message(
         lines.extend(_person_lines(person, item_allocations, total))
     lines.extend(["", "", "GRAND TOTAL = $" + format(grand_total, ".2f"), _FENCE])
     return "\n".join(lines)
+
+
+
+def format_combined_person_message(person: str, expenses: list[dict]) -> str:
+    """Format one person's stored shares across multiple expenses for WhatsApp."""
+    if not expenses:
+        raise ValueError("Select at least one expense to consolidate.")
+
+    lines = [_FENCE, f"{person} — Combined Expenses", ""]
+    grand_total = Decimal("0.00")
+
+    for index, expense in enumerate(expenses):
+        if index:
+            lines.extend(["", ""])
+        raw_date = expense["expense_date"]
+        expense_date = (
+            raw_date if isinstance(raw_date, date)
+            else date.fromisoformat(str(raw_date))
+        )
+        lines.extend([
+            f"{expense.get('expense_name', 'Expense')} {expense_date:%d/%m/%Y}",
+            "",
+        ])
+
+        rows = [
+            (allocation.item_name, allocation.per_person[person])
+            for allocation in expense["item_allocations"]
+            if person in allocation.per_person
+        ]
+        subtotal = sum((amount for _, amount in rows), Decimal("0.00"))
+        grand_total += subtotal
+
+        if rows:
+            name_width = max(
+                len("SUBTOTAL"),
+                *(len(name) for name, _ in rows),
+            ) + 2
+            amount_values = ["$" + format(amount, ".2f") for _, amount in rows]
+            subtotal_text = "$" + format(subtotal, ".2f")
+            amount_width = max(
+                len(subtotal_text),
+                *(len(value) for value in amount_values),
+            ) + 1
+            for (item_name, _), amount_text in zip(rows, amount_values):
+                lines.append(
+                    f"{item_name:<{name_width}}{amount_text:>{amount_width}}"
+                )
+            lines.append("-" * (name_width + amount_width))
+            lines.append(
+                f"{'SUBTOTAL':<{name_width}}{subtotal_text:>{amount_width}}"
+            )
+        else:
+            lines.append("No assigned items.")
+            lines.append("SUBTOTAL = $0.00")
+
+    lines.extend([
+        "",
+        "",
+        "=" * 32,
+        "GRAND TOTAL = $" + format(grand_total, ".2f"),
+        _FENCE,
+    ])
+    return "\n".join(lines)

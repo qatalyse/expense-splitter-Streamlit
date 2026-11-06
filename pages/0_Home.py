@@ -43,6 +43,19 @@ with center:
         st.session_state.pop("history_selected_expense_id", None)
         st.switch_page("pages/4_Expense_History.py")
 
+    if st.button(
+        "Consolidate expenses",
+        use_container_width=True,
+        disabled=not history_ready,
+        help=(
+            "Connect and initialize your Google Sheets database below first."
+            if not history_ready else None
+        ),
+    ):
+        st.session_state.pop("consolidation_message", None)
+        st.session_state.pop("consolidation_selection", None)
+        st.switch_page("pages/6_Expense_Consolidation.py")
+
 st.divider()
 
 spreadsheet_url = st.text_input(
