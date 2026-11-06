@@ -323,6 +323,7 @@ if st.button("Continue to item entry", type="primary", use_container_width=True)
         if not isinstance(expense_date, date):
             raise ValueError("Select a valid expense date.")
 
+        previous_person_id_by_name = draft.get("participant_id_by_name", {})
         if database_ready:
             ids = list(st.session_state.get("setup_selected_person_ids", []))
             selected = [active_by_id[person_id] for person_id in ids if person_id in active_by_id]
@@ -349,10 +350,24 @@ if st.button("Continue to item entry", type="primary", use_container_width=True)
         draft["initial_item_count"] = int(initial_count)
         draft["spreadsheet_url"] = current_url
 
+        new_name_by_person_id = {
+            person_id: name
+            for name, person_id in draft.get("participant_id_by_name", {}).items()
+        } if database_ready else {}
+
         for item in draft["items"]:
-            item["participants"] = [
-                person for person in item["participants"] if person in participants
-            ]
+            rebased_participants = []
+            for old_name in item["participants"]:
+                person_id = previous_person_id_by_name.get(old_name)
+                new_name = (
+                    new_name_by_person_id.get(person_id)
+                    if person_id else old_name
+                )
+                if new_name in participants and new_name not in rebased_participants:
+                    rebased_participants.append(new_name)
+            item["participants"] = rebased_participants
+            widget_key = f"item_participants_{item['id']}"
+            st.session_state[widget_key] = list(rebased_participants)
 
         while len(draft["items"]) < int(initial_count):
             draft["items"].append(new_item())
