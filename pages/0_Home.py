@@ -7,6 +7,7 @@ from database.google_sheets import (
     test_connection,
 )
 from pages.common import clear_draft
+from ui.status import create_status_slot, flash_status, render_status
 
 spreadsheet_url = st.session_state.get("setup_spreadsheet_url", "").strip()
 if not spreadsheet_url:
@@ -17,35 +18,34 @@ if not spreadsheet_url:
     except (FileNotFoundError, KeyError, RuntimeError):
         spreadsheet_url = ""
 
-# Keep both primary actions simple and vertically stacked.
-if st.button("Create new expense", type="primary", use_container_width=True):
-    clear_draft()
-    st.session_state["setup_spreadsheet_url"] = spreadsheet_url
-    st.switch_page("pages/1_Bill_Setup.py")
+# Center the primary workflow actions and keep them vertically stacked.
+left, center, right = st.columns([1, 2, 1])
+with center:
+    if st.button("Create new expense", type="primary", use_container_width=True):
+        clear_draft()
+        st.session_state["setup_spreadsheet_url"] = spreadsheet_url
+        st.switch_page("pages/1_Bill_Setup.py")
 
-database_ready = (
-    bool(spreadsheet_url)
-    and st.session_state.get("sheets_database_ready_url") == spreadsheet_url
-    and st.session_state.get("sheets_tested_url") == spreadsheet_url
-)
-
-if st.button(
-    "Open expense history",
-    use_container_width=True,
-    disabled=not database_ready,
-    help=(
-        "Connect and initialize your Google Sheets database below first."
-        if not database_ready else None
-    ),
-):
-    st.session_state["history_page"] = 0
-    st.session_state.pop("history_selected_expense_id", None)
-    st.switch_page("pages/4_Expense_History.py")
+    database_ready = (
+        bool(spreadsheet_url)
+        and st.session_state.get("sheets_database_ready_url") == spreadsheet_url
+        and st.session_state.get("sheets_tested_url") == spreadsheet_url
+    )
+    if st.button(
+        "Open expense history",
+        use_container_width=True,
+        disabled=not database_ready,
+        help=(
+            "Connect and initialize your Google Sheets database below first."
+            if not database_ready else None
+        ),
+    ):
+        st.session_state["history_page"] = 0
+        st.session_state.pop("history_selected_expense_id", None)
+        st.switch_page("pages/4_Expense_History.py")
 
 st.divider()
 
-# Database setup lives on Home so connection management is available before
-# entering either workflow. The title is intentionally omitted to keep Home light.
 spreadsheet_url = st.text_input(
     "Google Sheets URL",
     key="setup_spreadsheet_url",
@@ -55,31 +55,6 @@ spreadsheet_url = st.text_input(
 )
 current_url = spreadsheet_url.strip()
 
-last_connection = st.session_state.get("sheets_connection")
-tested_url = st.session_state.get("sheets_tested_url")
-
-if current_url and tested_url == current_url and last_connection:
-    st.success(f"Connected to **{last_connection['title']}**.")
-elif tested_url and tested_url != current_url:
-    st.info(
-        "The spreadsheet URL changed. Test the new URL before initializing "
-        "the database or using the People directory."
-    )
-
-if not current_url:
-    st.info(
-        "Enter your Google Sheets URL, then test the connection and initialize "
-        "the database. To prefill the URL after a fresh session, configure "
-        "[google_sheets].spreadsheet_url in Streamlit secrets."
-    )
-
-if current_url and st.session_state.get("sheets_database_ready_url") == current_url:
-    st.success("Google Sheets database is ready.")
-
-initialization_notice = st.session_state.pop("sheets_initialization_notice", None)
-if initialization_notice:
-    st.success(initialization_notice)
-
 test_col, initialize_col = st.columns(2)
 with test_col:
     test_clicked = st.button(
@@ -88,15 +63,23 @@ with test_col:
         disabled=not current_url,
         help="Checks whether the service account can access this spreadsheet. Does not change it.",
     )
-
 with initialize_col:
     initialize_clicked = st.button(
         "Initialize database",
         type="primary",
         use_container_width=True,
         disabled=not current_url,
-        help="Creates or validates the five required tabs and their headers.",
+        help="Creates or validates the required tabs and their headers.",
     )
+
+status = create_status_slot("home_status")
+last_connection = st.session_state.get("sheets_connection")
+tested_url = st.session_state.get("sheets_tested_url")
+database_ready = (
+    bool(current_url)
+    and st.session_state.get("sheets_database_ready_url") == current_url
+    and tested_url == current_url
+)
 
 if test_clicked:
     st.session_state.pop("sheets_connection", None)
@@ -107,17 +90,22 @@ if test_clicked:
         connection = test_connection(current_url)
         st.session_state["sheets_connection"] = connection
         st.session_state["sheets_tested_url"] = current_url
-        st.success(
-            f"Connection successful: **{connection['title']}**. "
-            f"Existing tabs: {', '.join(connection['sheets']) or 'none'}."
+        flash_status(
+            "home_status",
+            "success",
+            f"Connected to {connection['title']}. Existing tabs: "
+            f"{', '.join(connection['sheets']) or 'none'}.",
         )
+        st.rerun()
     except (ValueError, GoogleSheetsSetupError) as exc:
-        st.error(str(exc))
+        render_status(status, "error", str(exc))
 
 if initialize_clicked:
     if st.session_state.get("sheets_tested_url") != current_url:
-        st.warning(
-            "Test this spreadsheet connection successfully before initializing it."
+        render_status(
+            status,
+            "warning",
+            "Test this spreadsheet connection successfully before initializing it.",
         )
     else:
         try:
@@ -136,13 +124,38 @@ if initialize_clicked:
                     + ", ".join(upgraded)
                     + ". Existing records were preserved."
                 )
-            st.session_state["sheets_initialization_notice"] = notice
+            flash_status("home_status", "success", notice)
             st.rerun()
         except (ValueError, GoogleSheetsSetupError) as exc:
-            st.error(str(exc))
+            render_status(status, "error", str(exc))
 
-if not database_ready:
-    st.caption(
-        "Expense history becomes available after a successful connection test "
-        "and database initialization."
-    )
+# A single status slot reports the current overall state; messages replace one
+# another rather than pushing the action controls down as multiple banners.
+if not st.session_state.get("home_status"):
+    if not current_url:
+        render_status(
+            status,
+            "info",
+            "Enter a Google Sheets URL. To prefill it after a fresh session, "
+            "configure [google_sheets].spreadsheet_url in Streamlit secrets.",
+        )
+    elif tested_url and tested_url != current_url:
+        render_status(
+            status,
+            "warning",
+            "The spreadsheet URL changed. Test the new URL before initializing the database.",
+        )
+    elif database_ready and last_connection:
+        render_status(
+            status,
+            "success",
+            f"Connected to {last_connection['title']} · Database ready · 5 tabs verified",
+        )
+    elif last_connection and tested_url == current_url:
+        render_status(status, "success", f"Connected to {last_connection['title']}.")
+    else:
+        render_status(
+            status,
+            "info",
+            "Test the connection, then initialize the database to enable expense history.",
+        )
