@@ -51,6 +51,12 @@ class DatabaseSchemaTests(unittest.TestCase):
         self.assertIn("participant_id", headers)
         self.assertIn("item_id", headers)
 
+    def test_people_directory_includes_archive_status(self):
+        self.assertEqual(
+            SHEET_SCHEMA["People"],
+            ("person_id", "display_name", "created_at", "updated_at", "is_active"),
+        )
+
     def test_legacy_participants_schema_is_recognised(self):
         self.assertEqual(
             LEGACY_PARTICIPANTS_HEADERS,
