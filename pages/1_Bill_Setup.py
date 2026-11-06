@@ -8,7 +8,6 @@ from pages.common import (
     new_item,
     parse_optional_money,
     parse_participants,
-    singapore_today,
 )
 
 draft = ensure_draft()
@@ -100,7 +99,6 @@ if st.button("Continue to item entry", type="primary", use_container_width=True)
                 person for person in item["participants"] if person in participants
             ]
 
-        # Seed a new draft or append blank rows; never silently delete existing entries.
         while len(draft["items"]) < int(initial_count):
             draft["items"].append(new_item())
 
