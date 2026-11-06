@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 
 from pages.common import clear_draft, ensure_draft, singapore_today
-from pages.share_format import format_all_message, format_person_message
+from presentation.share_format import format_all_message, format_person_message
 
 draft = ensure_draft()
 result = st.session_state.get("calculated_result")
