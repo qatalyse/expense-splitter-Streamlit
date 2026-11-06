@@ -350,3 +350,477 @@ def restore_person(spreadsheet_url: str, person_id: str) -> None:
         raise
     except Exception as exc:
         raise _translate_api_error(exc) from exc
+
+
+
+def _read_rows_with_numbers(service, spreadsheet_id: str, tab: str) -> list[dict]:
+    """Read records with their current 1-based physical row numbers."""
+    response = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"'{tab}'!A1:ZZ",
+    ).execute()
+    values = response.get("values", [])
+    if not values:
+        return []
+    headers = values[0]
+    records = []
+    for row_number, values_row in enumerate(values[1:], start=2):
+        if not any(str(value).strip() for value in values_row):
+            continue
+        record = {
+            header: values_row[index] if index < len(values_row) else ""
+            for index, header in enumerate(headers)
+        }
+        record["_row_number"] = row_number
+        records.append(record)
+    return records
+
+
+def list_expense_summaries(
+    spreadsheet_url: str,
+    page: int = 0,
+    page_size: int = 25,
+    search: str = "",
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict:
+    """Return a page of expense summaries without loading detail tabs.
+
+    The normal path reads only IDs for pagination and requests the selected
+    summary rows. Searching or date filtering scans only the Expenses summary
+    tab; item, participant and allocation tabs are never loaded here.
+    """
+    if page < 0 or page_size < 1 or page_size > 100:
+        raise ValueError("Invalid expense-history page size or page number.")
+
+    spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
+    try:
+        service = _sheets_service()
+        search_text = search.strip().casefold()
+        if search_text or date_from or date_to:
+            all_rows = _read_rows_with_numbers(service, spreadsheet_id, "Expenses")
+            candidates = [
+                row for row in all_rows
+                if (not search_text or search_text in str(row.get("expense_name", "")).casefold())
+                and (not date_from or str(row.get("expense_date", "")) >= date_from)
+                and (not date_to or str(row.get("expense_date", "")) <= date_to)
+            ]
+            candidates.sort(
+                key=lambda row: (
+                    str(row.get("created_at", "")),
+                    str(row.get("expense_date", "")),
+                ),
+                reverse=True,
+            )
+            total_count = len(candidates)
+            start = page * page_size
+            selected = candidates[start:start + page_size]
+        else:
+            ids = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range="'Expenses'!A2:A",
+            ).execute().get("values", [])
+            populated_row_numbers = [
+                index + 2 for index, row in enumerate(ids)
+                if row and row[0].strip()
+            ]
+            total_count = len(populated_row_numbers)
+            end = max(total_count - page * page_size, 0)
+            start = max(end - page_size, 0)
+            chosen_row_numbers = list(reversed(populated_row_numbers[start:end]))
+            if chosen_row_numbers:
+                ranges = [f"'Expenses'!A{row}:T{row}" for row in chosen_row_numbers]
+                response = service.spreadsheets().values().batchGet(
+                    spreadsheetId=spreadsheet_id,
+                    ranges=ranges,
+                ).execute()
+                selected = []
+                for row_number, value_range in zip(
+                    chosen_row_numbers, response.get("valueRanges", [])
+                ):
+                    values = value_range.get("values", [[]])[0]
+                    selected.append({
+                        header: values[index] if index < len(values) else ""
+                        for index, header in enumerate(SHEET_SCHEMA["Expenses"])
+                    } | {"_row_number": row_number})
+            else:
+                selected = []
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise _translate_api_error(exc) from exc
+
+    return {
+        "expenses": selected,
+        "page": page,
+        "page_size": page_size,
+        "total_count": total_count,
+        "has_more": (page + 1) * page_size < total_count,
+    }
+
+
+def get_expense_details(spreadsheet_url: str, expense_id: str) -> dict:
+    """Load one expense and its related rows on demand."""
+    spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
+    try:
+        service = _sheets_service()
+        metadata = service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id,
+            fields="sheets(properties(sheetId,title))",
+        ).execute()
+        sheet_ids = {
+            sheet["properties"]["title"]: sheet["properties"]["sheetId"]
+            for sheet in metadata.get("sheets", [])
+        }
+
+        expense_rows = _read_rows_with_numbers(service, spreadsheet_id, "Expenses")
+        expense_matches = [
+            row for row in expense_rows if row.get("expense_id") == expense_id
+        ]
+        if len(expense_matches) != 1:
+            raise ValueError("The selected expense could not be found uniquely.")
+        expense = expense_matches[0]
+
+        related = {}
+        for tab in ("Participants", "Items", "Allocations"):
+            related[tab] = [
+                row for row in _read_rows_with_numbers(service, spreadsheet_id, tab)
+                if row.get("expense_id") == expense_id
+            ]
+
+        related["Participants"].sort(key=lambda row: int(row.get("sort_order") or 0))
+        related["Items"].sort(key=lambda row: int(row.get("sort_order") or 0))
+        return {
+            "expense": expense,
+            "Participants": related["Participants"],
+            "Items": related["Items"],
+            "Allocations": related["Allocations"],
+            "sheet_ids": sheet_ids,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise _translate_api_error(exc) from exc
+
+
+def historical_result_from_details(details: dict):
+    """Reconstruct the saved breakdown for display without recalculating it."""
+    from datetime import date
+    from expense_splitter.models import ItemAllocation, SplitResult
+
+    participants = {
+        row["participant_id"]: row.get("name_snapshot", "")
+        for row in details["Participants"]
+    }
+    allocations_by_item: dict[str, dict[str, Decimal]] = {}
+    for row in details["Allocations"]:
+        person_name = participants.get(row.get("participant_id"))
+        if person_name is None:
+            continue
+        allocations_by_item.setdefault(row.get("item_id", ""), {})[person_name] = Decimal(
+            row.get("final_share") or "0"
+        )
+
+    item_allocations = []
+    for item in details["Items"]:
+        per_person = allocations_by_item.get(item["item_id"], {})
+        item_total = sum(per_person.values(), Decimal("0.00"))
+        item_allocations.append(
+            ItemAllocation(
+                item_name=item.get("item_name", ""),
+                per_person=per_person,
+                total=item_total,
+            )
+        )
+
+    expense = details["expense"]
+    per_person: dict[str, Decimal] = {}
+    for allocation in item_allocations:
+        for person, amount in allocation.per_person.items():
+            per_person[person] = per_person.get(person, Decimal("0.00")) + amount
+
+    receipt = expense.get("receipt_total")
+    difference = expense.get("difference")
+    reconciled = expense.get("reconciled")
+    subtotal = Decimal(expense.get("subtotal") or "0")
+    service_charge = Decimal(expense.get("service_charge_amount") or "0")
+    gst = Decimal(expense.get("gst_amount") or "0")
+    calculated_total = Decimal(expense.get("calculated_total") or "0")
+
+    result = SplitResult(
+        subtotal=subtotal,
+        service_charge=service_charge,
+        gst=gst,
+        calculated_total=calculated_total,
+        receipt_total=Decimal(receipt) if receipt else None,
+        difference=Decimal(difference) if difference else None,
+        reconciled=(
+            reconciled.strip().casefold() in {"true", "1", "yes"}
+            if reconciled != "" else None
+        ),
+        per_person=per_person,
+        item_allocations=item_allocations,
+    )
+    return result
+
+
+def draft_from_expense_details(details: dict, spreadsheet_url: str) -> dict:
+    """Convert a saved expense into the existing three-page editing draft."""
+    from datetime import date
+    from uuid import uuid4
+
+    expense = details["expense"]
+    participant_by_id = {
+        row["participant_id"]: row for row in details["Participants"]
+    }
+    names = [
+        row.get("name_snapshot", "")
+        for row in details["Participants"]
+    ]
+    person_id_by_name = {
+        row.get("name_snapshot", ""): row.get("person_id", "")
+        for row in details["Participants"]
+    }
+    allocations_by_item: dict[str, list[str]] = {}
+    for allocation in details["Allocations"]:
+        participant = participant_by_id.get(allocation.get("participant_id"))
+        if participant:
+            allocations_by_item.setdefault(allocation.get("item_id", ""), []).append(
+                participant.get("name_snapshot", "")
+            )
+
+    items = [
+        {
+            "id": str(uuid4()),
+            "item_id": row["item_id"],
+            "name": row.get("item_name", ""),
+            "price": row.get("original_price", ""),
+            "participants": allocations_by_item.get(row["item_id"], []),
+        }
+        for row in details["Items"]
+    ]
+
+    gst_enabled = str(expense.get("gst_enabled", "")).casefold() in {"true", "1", "yes"}
+    service_enabled = str(expense.get("service_charge_enabled", "")).casefold() in {"true", "1", "yes"}
+    if str(expense.get("prices_are_nett", "")).casefold() in {"true", "1", "yes"}:
+        billing_mode = "Nett"
+    elif gst_enabled and service_enabled:
+        billing_mode = "GST + service charge"
+    elif gst_enabled:
+        billing_mode = "GST only"
+    elif service_enabled:
+        billing_mode = "Service charge only"
+    else:
+        billing_mode = "Nett"
+
+    expense_date = date.fromisoformat(expense["expense_date"])
+    return {
+        "expense_name": expense.get("expense_name", ""),
+        "expense_date": expense_date,
+        "participants": names,
+        "participant_id_by_name": person_id_by_name,
+        "participant_ids": [row.get("person_id", "") for row in details["Participants"]],
+        "receipt_total": expense.get("receipt_total", ""),
+        "billing_mode": billing_mode,
+        "initial_item_count": max(1, len(items)),
+        "items": items,
+        "spreadsheet_url": spreadsheet_url,
+        "editing_expense_id": expense["expense_id"],
+        "editing_created_at": expense.get("created_at", ""),
+        "editing_revision": int(expense.get("revision") or "1"),
+        "editing_original_details": details,
+    }
+
+
+def _cell_data(value) -> dict:
+    """Convert a value to a Sheets CellData userEnteredValue."""
+    if isinstance(value, bool):
+        return {"userEnteredValue": {"boolValue": value}}
+    if value is None or value == "":
+        return {"userEnteredValue": {}}
+    return {"userEnteredValue": {"stringValue": str(value)}}
+
+
+def _row_data(tab: str, row: dict) -> dict:
+    return {
+        "values": [
+            _cell_data(row.get(column, ""))
+            for column in SHEET_SCHEMA[tab]
+        ]
+    }
+
+
+def update_expense_bundle(
+    spreadsheet_url: str,
+    bundle: dict,
+    expected_revision: int,
+) -> dict:
+    """Replace an expense and its child rows in one Sheets batchUpdate request.
+
+    Uses the stable expense_id and checks the current revision before writing.
+    Related rows are deleted by their recorded row positions, then replacement
+    rows are appended in the same atomic spreadsheets.batchUpdate call.
+    """
+    spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
+    details = get_expense_details(spreadsheet_url, bundle["expense_id"])
+    current_revision = int(details["expense"].get("revision") or "1")
+    if current_revision != expected_revision:
+        raise GoogleSheetsSetupError(
+            "This expense was modified after you opened it. Reload it from Expense "
+            "History before saving, so you do not overwrite newer changes."
+        )
+
+    service = _sheets_service()
+    requests = []
+    sheet_ids = details["sheet_ids"]
+
+    for tab in ("Participants", "Items", "Allocations"):
+        rows = details[tab]
+        for row in sorted(rows, key=lambda item: item["_row_number"], reverse=True):
+            row_index = row["_row_number"] - 1
+            requests.append({
+                "deleteDimension": {
+                    "range": {
+                        "sheetId": sheet_ids[tab],
+                        "dimension": "ROWS",
+                        "startIndex": row_index,
+                        "endIndex": row_index + 1,
+                    }
+                }
+            })
+
+    expense = bundle["Expenses"][0]
+    expense_row_index = details["expense"]["_row_number"] - 1
+    requests.append({
+        "updateCells": {
+            "start": {
+                "sheetId": sheet_ids["Expenses"],
+                "rowIndex": expense_row_index,
+                "columnIndex": 0,
+            },
+            "rows": [_row_data("Expenses", expense)],
+            "fields": "userEnteredValue",
+        }
+    })
+
+    for tab in ("Participants", "Items", "Allocations"):
+        rows = bundle.get(tab, [])
+        if rows:
+            requests.append({
+                "appendCells": {
+                    "sheetId": sheet_ids[tab],
+                    "rows": [_row_data(tab, row) for row in rows],
+                    "fields": "userEnteredValue",
+                }
+            })
+
+    try:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": requests},
+        ).execute()
+    except Exception as exc:
+        raise _translate_api_error(exc) from exc
+
+    return {
+        "expense_id": bundle["expense_id"],
+        "revision": int(expense["revision"]),
+        "updated": True,
+    }
+
+
+def build_update_bundle(draft: dict, result, existing_details: dict) -> dict:
+    """Build replacement rows while retaining IDs for unchanged records."""
+    bundle = build_expense_bundle(draft, result)
+    expense_id = draft["editing_expense_id"]
+    existing_expense = existing_details["expense"]
+    bundle["expense_id"] = expense_id
+
+    old_participant_by_person = {
+        row.get("person_id"): row
+        for row in existing_details["Participants"]
+    }
+    participant_id_by_name = {}
+    for row in bundle["Participants"]:
+        old = old_participant_by_person.get(row["person_id"])
+        if old:
+            row["participant_id"] = old["participant_id"]
+        participant_id_by_name[row["name_snapshot"]] = row["participant_id"]
+
+    old_item_ids = {
+        row.get("item_id"): row
+        for row in existing_details["Items"]
+    }
+    old_item_ids_by_index = {
+        index: row for index, row in enumerate(existing_details["Items"])
+    }
+    for index, row in enumerate(bundle["Items"]):
+        draft_item = draft["items"][index]
+        old_item = old_item_ids.get(draft_item.get("item_id"))
+        if old_item:
+            row["item_id"] = old_item["item_id"]
+
+    # Preserve allocation IDs where the item and participant relationship remains.
+    old_allocation_ids = {
+        (row.get("item_id"), row.get("participant_id")): row.get("allocation_id")
+        for row in existing_details["Allocations"]
+    }
+    item_id_by_name_and_index = {
+        (index, row["item_name"]): row["item_id"]
+        for index, row in enumerate(bundle["Items"])
+    }
+    original_allocations = bundle["Allocations"]
+    for row in original_allocations:
+        # The builder has already generated item and participant IDs. Resolve
+        # the corresponding new item by the allocation's original row order.
+        item_index = next(
+            (i for i, item in enumerate(bundle["Items"])
+             if item["item_name"] == next(
+                 (draft_item["name"] for draft_item in draft["items"]
+                  if draft_item.get("item_id") == item.get("item_id")),
+                 item["item_name"],
+             )),
+            None,
+        )
+        if item_index is None:
+            continue
+
+    # Rebuild allocations after all preserved item/participant IDs are known.
+    old_alloc_by_pair = old_allocation_ids
+    allocations_by_item_name = {
+        item["item_name"]: item["item_id"] for item in bundle["Items"]
+    }
+    old_item_by_name = {
+        row.get("item_name"): row.get("item_id")
+        for row in existing_details["Items"]
+    }
+    for row in bundle["Allocations"]:
+        person_name = next(
+            (name for name, pid in participant_id_by_name.items()
+             if pid == row["participant_id"]),
+            None,
+        )
+        if person_name is None:
+            continue
+        item_name = next(
+            (item["item_name"] for item in bundle["Items"]
+             if item["item_id"] == row["item_id"]),
+            None,
+        )
+        old_item_id = old_item_by_name.get(item_name)
+        old_participant = old_participant_by_person.get(
+            next((pid for pid, person in old_participant_by_person.items()
+                  if person.get("name_snapshot") == person_name), None)
+        )
+        old_participant_id = old_participant.get("participant_id") if old_participant else None
+        previous_id = old_alloc_by_pair.get((old_item_id, old_participant_id))
+        if previous_id:
+            row["allocation_id"] = previous_id
+
+    original = existing_expense
+    expense = bundle["Expenses"][0]
+    expense["expense_id"] = expense_id
+    expense["created_at"] = original.get("created_at", expense["created_at"])
+    expense["updated_at"] = _now()
+    expense["revision"] = str(int(original.get("revision") or "1") + 1)
+    return bundle
