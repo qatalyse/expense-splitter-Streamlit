@@ -148,6 +148,8 @@ def build_bill_from_draft() -> Bill:
         items=items,
         billing=billing_rules_for_mode(draft["billing_mode"]),
         receipt_total=parse_optional_money(draft["receipt_total"], "Receipt total"),
+        expense_name=draft.get("expense_name", ""),
+        expense_date=draft.get("expense_date"),
     )
 
 
