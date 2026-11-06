@@ -20,7 +20,7 @@ if not spreadsheet_url:
         spreadsheet_url = ""
 
 # Keep both primary actions simple and vertically stacked.
-if st.button("New expense", type="primary", use_container_width=True):
+if st.button("Create new expense", type="primary", use_container_width=True):
     clear_draft()
     st.session_state["setup_spreadsheet_url"] = spreadsheet_url
     st.switch_page("pages/1_Bill_Setup.py")
@@ -32,7 +32,7 @@ database_ready = (
 )
 
 if st.button(
-    "Expense history",
+    "Open expense history",
     use_container_width=True,
     disabled=not database_ready,
     help=(
@@ -82,6 +82,10 @@ if not current_url:
 if current_url and st.session_state.get("sheets_database_ready_url") == current_url:
     st.success("Google Sheets database is ready.")
 
+initialization_notice = st.session_state.pop("sheets_initialization_notice", None)
+if initialization_notice:
+    st.success(initialization_notice)
+
 if st.button(
     "Test connection",
     use_container_width=True,
@@ -121,19 +125,18 @@ if st.button(
             st.session_state.pop("people_directory_cache", None)
             created = setup_result["created_tabs"]
             if created:
-                st.success(
-                    "Database initialized. Created tabs: "
-                    + ", ".join(created) + "."
-                )
+                notice = "Database initialized. Created tabs: " + ", ".join(created) + "."
             else:
-                st.success("Database is ready. All five tabs and headers are present.")
+                notice = "Database is ready. All five tabs and headers are present."
             upgraded = setup_result.get("upgraded_legacy_tabs", [])
             if upgraded:
-                st.info(
-                    "Upgraded existing tab headers: "
+                notice += (
+                    " Upgraded existing tab headers: "
                     + ", ".join(upgraded)
                     + ". Existing records were preserved."
                 )
+            st.session_state["sheets_initialization_notice"] = notice
+            st.rerun()
         except (ValueError, GoogleSheetsSetupError) as exc:
             st.error(str(exc))
 
