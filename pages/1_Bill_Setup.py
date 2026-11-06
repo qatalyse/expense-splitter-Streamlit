@@ -95,7 +95,7 @@ database_ready = (
     and st.session_state.get("sheets_tested_url") == current_url
 )
 
-if database_ready:
+if database_ready and not st.session_state.get("_status_rendered_setup_status", False):
     render_status(status, "success", "Google Sheets database is ready.")
 
     # Manage the reusable directory on the same setup page.
