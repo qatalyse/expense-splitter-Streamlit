@@ -833,18 +833,6 @@ def build_update_bundle(draft: dict, result, existing_details: dict) -> dict:
 
 
 
-def _count_active_expenses(service, spreadsheet_id: str) -> int:
-    """Count active expenses from the summary tab only."""
-    rows = service.spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id,
-        range="'Expenses'!U2:U",
-    ).execute().get("values", [])
-    return sum(
-        1 for row in rows
-        if not row or str(row[0]).strip().casefold() not in {"true", "1", "yes"}
-    )
-
-
 def set_expense_archived(spreadsheet_url: str, expense_id: str, archived: bool,
                          expected_revision: int | None = None) -> dict:
     """Soft-delete or restore an expense without deleting its child rows."""
