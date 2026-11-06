@@ -958,6 +958,7 @@ def list_person_expense_summaries(
 def get_combined_person_expenses(
     spreadsheet_url: str,
     person_id: str,
+    person_name: str,
     expense_ids: list[str],
 ) -> list[dict]:
     """Load selected expense items and stored shares for one person.
@@ -1043,13 +1044,13 @@ def get_combined_person_expenses(
                 item_allocations.append(
                     ItemAllocation(
                         item_name=item.get("item_name", ""),
-                        per_person={person_id: amount},
+                        per_person={person_name: amount},
                         total=amount,
                     )
                 )
 
             subtotal = sum(
-                (row.per_person[person_id] for row in item_allocations),
+                (row.per_person[person_name] for row in item_allocations),
                 Decimal("0.00"),
             )
             combined.append({
