@@ -59,7 +59,7 @@ The application can also use a root-level `expense-splitter-service.json` withou
 
 - **Test connection** performs a read-only metadata request. It confirms the credentials can open the spreadsheet but does not modify it.
 - **Initialize database** requires a successful test for the current URL. It creates any missing tabs and writes the expected header row.
-- The five tabs are `People`, `Expenses`, `Participants`, `Items`, and `Allocations`. The `People` directory includes an `is_active` flag for archiving. The `Expenses` tab includes `updated_at` and `revision` columns for in-place edits and stale-edit checks.
+- The five tabs are `People`, `Expenses`, `Participants`, `Items`, and `Allocations`. The `People` directory includes an `is_active` flag for archiving. The `Expenses` tab includes `updated_at`, `revision`, `is_archived`, and `archived_at` columns for in-place edits, stale-edit checks, and reversible deletion.
 - `People` is an independent master directory of reusable identities (`person_id`, `display_name`, timestamps); it is not a child of `Expenses`.
 - `Participants` links a person to one expense using `person_id` and keeps a `name_snapshot` for historical display. `Allocations` references the expense-specific `participant_id` and item ID.
 - The People manager is on Page 1. Person IDs are permanent; renaming updates the directory but does not rewrite historical name snapshots. Archiving hides a person from future selection but keeps their record; archived people can be restored.
@@ -74,6 +74,9 @@ The spreadsheet URL is kept in the current Streamlit session and copied into the
 - The Home page offers **New expense** and **Expense history**.
 - Expense history initially loads the latest 25 summary rows. **Load 25 older expenses** retrieves the next page. Searching by name or filtering by exact date scans only the `Expenses` summary tab; item, participant and allocation details are not loaded for the list.
 - Opening one expense loads its matching detail records from `Participants`, `Items`, and `Allocations`.
+- The history list hides archived expenses by default. **Show archived expenses** reveals them, and the detail page offers Restore.
+- **Duplicate** creates a new unsaved draft from the selected expense, with a fresh expense ID and new item/participant/allocation IDs when saved. The source expense is unchanged.
+- **Delete expense** is a reversible soft delete: it sets `is_archived` and `archived_at`; it does not physically remove the expense or its child rows.
 - Historical breakdowns use stored `final_share` values and the shared `presentation/expense_breakdown.py` renderer. They are not recalculated, so the original copyable monospace WhatsApp breakdown is preserved.
 - Editing loads the saved data into the existing three-page workflow. Saving updates the original `expense_id`, keeps `created_at`, increments `revision`, and updates `updated_at`.
 - Child rows are replaced in one Google Sheets `spreadsheets.batchUpdate` request, preserving unchanged participant, item and allocation IDs. A revision check rejects edits opened before a newer saved revision. This is an optimistic stale-edit check, not a database-level lock.
@@ -81,8 +84,8 @@ The spreadsheet URL is kept in the current Streamlit session and copied into the
 
 ## Application pages
 - **Home:** choose New expense or Expense history; configure and initialize the Google Sheets connection below these two actions.
-- **Expense history:** browse, search, date-filter, view or edit saved expenses.
-- **Saved expense:** view the original item matrix and copyable monospace breakdown, or load it for editing.
+- **Expense history:** browse, search, date-filter, view, edit or duplicate saved expenses; optionally show archived expenses.
+- **Saved expense:** view the original item matrix and copyable monospace breakdown, edit or duplicate it, and delete/restore it through reversible archiving.
 - **Page 1 — Bill setup:** expense name, expense date (defaults to Singapore's current date), optional receipt total, billing mode, initial number of item rows (default 3), and reusable People management (select, add, rename, archive and restore people).
 - **Page 2 — Item entry:** item names, prices and participant assignments. Add or remove item rows dynamically.
 - **Page 3 — Results:** shared charge-inclusive item/person allocation matrix, copyable WhatsApp breakdowns, receipt reconciliation, and create/update persistence to Google Sheets.
@@ -91,6 +94,7 @@ The in-progress bill is held in Streamlit session state while the user navigates
 
 ## Where to change things
 - **Navigation:** app.py
+- **Reusable replaceable status messages:** ui/status.py
 - **Page UI:** pages/1_Bill_Setup.py, pages/2_Item_Entry.py, pages/3_Results.py
 - **Shared page state and input conversion:** pages/common.py
 - **Google Sheets schema and connection setup:** database/google_sheets.py
@@ -114,4 +118,4 @@ Keep GST, service charge, allocation and reconciliation rules in expense_splitte
 - Receipt total is optional. Differences over SGD 0.01 are reported, not silently distributed.
 - Money calculations use Decimal.
 
-This is an educational prototype, not tax advice. Discounts, vouchers, deletion and duplication of saved expenses, full audit history, establishment-specific nett treatment and advanced POS rounding remain out of scope.
+This is an educational prototype, not tax advice. Permanent destruction of archived records, full audit history, establishment-specific nett treatment and advanced POS rounding remain out of scope.
