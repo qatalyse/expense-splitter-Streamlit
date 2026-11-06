@@ -442,10 +442,19 @@ def list_expense_summaries(
                 spreadsheetId=spreadsheet_id,
                 range="'Expenses'!A2:A",
             ).execute().get("values", [])
-            populated_row_numbers = [
-                index + 2 for index, row in enumerate(ids)
-                if row and row[0].strip()
-            ]
+            archived_flags = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range="'Expenses'!U2:U",
+            ).execute().get("values", [])
+            populated_row_numbers = []
+            for index, row in enumerate(ids):
+                if not row or not row[0].strip():
+                    continue
+                flag_row = archived_flags[index] if index < len(archived_flags) else []
+                is_archived = bool(flag_row) and str(flag_row[0]).strip().casefold() in {"true", "1", "yes"}
+                if include_archived or not is_archived:
+                    populated_row_numbers.append(index + 2)
+
             total_count = len(populated_row_numbers)
             end = max(total_count - page * page_size, 0)
             start = max(end - page_size, 0)
