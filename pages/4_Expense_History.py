@@ -1,4 +1,5 @@
 """Search and browse saved expense summaries, loading details only on demand."""
+from decimal import Decimal
 
 import streamlit as st
 
@@ -101,5 +102,3 @@ if response["has_more"]:
 
 if st.button("← Home"):
     st.switch_page("pages/0_Home.py")
-
-from decimal import Decimal
