@@ -1,4 +1,5 @@
 """Page 1: bill setup, Google Sheets configuration and reusable People directory."""
+from collections import Counter
 from datetime import date
 
 import streamlit as st
@@ -289,18 +290,31 @@ if database_ready:
     if valid_selection != st.session_state["setup_selected_person_ids"]:
         st.session_state["setup_selected_person_ids"] = valid_selection
 
+    active_name_counts = Counter(
+        person["display_name"].strip().casefold()
+        for person in active_people
+    )
+
+    def person_option_label(person_id: str) -> str:
+        person = active_by_id[person_id]
+        name = person["display_name"]
+        if active_name_counts[name.strip().casefold()] > 1:
+            return f"{name} · {person_id[:8]}"
+        return name
+
     selected_ids = st.multiselect(
         "Select people sharing this bill",
         options=list(active_by_id),
         key="setup_selected_person_ids",
-        format_func=lambda person_id: active_by_id[person_id]["display_name"],
+        format_func=person_option_label,
         placeholder="Select existing people",
     )
     selected_names = [active_by_id[person_id]["display_name"] for person_id in selected_ids]
     if len({name.casefold() for name in selected_names}) != len(selected_names):
         st.warning(
-            "Two selected directory records have the same display name. "
-            "Rename one before using both in a single expense."
+            "Two selected people have the same display name. The current bill "
+            "calculator identifies participants by display name, so select only "
+            "one of them for this expense. Both identities remain in your directory."
         )
 else:
     st.info("Connect and initialize Google Sheets to use the reusable People directory.")
