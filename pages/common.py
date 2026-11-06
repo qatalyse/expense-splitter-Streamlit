@@ -162,5 +162,5 @@ def clear_draft() -> None:
         if key in {
             "expense_draft", "calculated_result", "confirm_reset",
             "expense_save_bundle", "expense_saved_id",
-        } or key.startswith(prefixes):
+        } or (key.startswith(prefixes) and key != "setup_spreadsheet_url"):
             st.session_state.pop(key, None)
