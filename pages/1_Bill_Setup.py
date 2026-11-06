@@ -406,3 +406,7 @@ if st.button("Continue to item entry", type="primary", use_container_width=True)
         st.switch_page("pages/2_Item_Entry.py")
     except ValueError as exc:
         st.error(str(exc))
+
+
+if st.button("← Home", use_container_width=True):
+    st.switch_page("pages/0_Home.py")
