@@ -21,15 +21,31 @@ if not spreadsheet_url:
         st.switch_page("pages/1_Bill_Setup.py")
     st.stop()
 
-search = st.text_input(
+search_col, date_col = st.columns([2, 1])
+search = search_col.text_input(
     "Search by expense name",
     key="history_search",
     placeholder="e.g. Dinner",
 )
-previous_search = st.session_state.get("history_previous_search")
-if previous_search != search:
+date_filter = date_col.text_input(
+    "Exact date (YYYY-MM-DD)",
+    key="history_date_filter",
+    placeholder="2026-11-07",
+)
+if date_filter:
+    try:
+        from datetime import date as date_type
+        selected_date = date_type.fromisoformat(date_filter.strip()).isoformat()
+    except ValueError:
+        st.error("Enter the date as YYYY-MM-DD.")
+        st.stop()
+else:
+    selected_date = None
+
+current_filter = (search, selected_date)
+if st.session_state.get("history_previous_filter") != current_filter:
     st.session_state["history_page"] = 0
-    st.session_state["history_previous_search"] = search
+    st.session_state["history_previous_filter"] = current_filter
 
 page = st.session_state.get("history_page", 0)
 try:
@@ -39,6 +55,8 @@ try:
             page=page,
             page_size=25,
             search=search,
+            date_from=selected_date,
+            date_to=selected_date,
         )
 except (ValueError, GoogleSheetsSetupError) as exc:
     st.error(f"Could not retrieve expense history: {exc}")
