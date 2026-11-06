@@ -323,3 +323,45 @@ def save_expense_bundle(spreadsheet_url: str, bundle: dict) -> dict:
             raise
         raise _translate_api_error(exc) from exc
     return {"expense_id": bundle["expense_id"], "inserted": counts}
+
+
+
+def restore_person(spreadsheet_url: str, person_id: str) -> None:
+    """Restore an archived person without changing their permanent ID."""
+    people = list_people(spreadsheet_url, include_archived=True)
+    target = next(
+        (person for person in people if person["person_id"] == person_id),
+        None,
+    )
+    if target is None:
+        raise ValueError("That person no longer exists in the People directory.")
+    if any(
+        person["person_id"] != person_id
+        and person.get("is_active", True)
+        and person["display_name"].strip().casefold()
+            == target["display_name"].strip().casefold()
+        for person in people
+    ):
+        raise ValueError(
+            "Another active person already uses this display name. "
+            "Rename that person before restoring this record."
+        )
+
+    spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
+    try:
+        service = _sheets_service()
+        row = _find_person_row(service, spreadsheet_id, person_id)
+        service.spreadsheets().values().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={
+                "valueInputOption": "RAW",
+                "data": [
+                    {"range": f"'People'!D{row}", "values":[[_now()]]},
+                    {"range": f"'People'!E{row}", "values":[[True]]},
+                ],
+            },
+        ).execute()
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise _translate_api_error(exc) from exc
