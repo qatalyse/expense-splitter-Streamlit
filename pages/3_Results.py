@@ -92,6 +92,7 @@ else:
 
             st.session_state["expense_saved_id"] = save_summary["expense_id"]
             st.session_state.pop("expense_save_bundle", None)
+            st.session_state.pop("history_detail_cache", None)
             st.success(
                 ("Expense updated" if editing_expense_id else "Expense saved")
                 + f" successfully. Reference: {save_summary['expense_id']}"
