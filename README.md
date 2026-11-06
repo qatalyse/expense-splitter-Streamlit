@@ -59,19 +59,20 @@ The application can also use a root-level `expense-splitter-service.json` withou
 
 - **Test connection** performs a read-only metadata request. It confirms the credentials can open the spreadsheet but does not modify it.
 - **Initialize database** requires a successful test for the current URL. It creates any missing tabs and writes the expected header row.
-- The five tabs are `People`, `Expenses`, `Participants`, `Items`, and `Allocations`.
+- The five tabs are `People`, `Expenses`, `Participants`, `Items`, and `Allocations`. The `People` directory includes an `is_active` flag for archiving.
 - `People` is an independent master directory of reusable identities (`person_id`, `display_name`, timestamps); it is not a child of `Expenses`.
 - `Participants` links a person to one expense using `person_id` and keeps a `name_snapshot` for historical display. `Allocations` references the expense-specific `participant_id` and item ID.
+- The People manager is on Page 1. Person IDs are permanent; renaming updates the directory but does not rewrite historical name snapshots. Archiving hides a person from future selection but keeps their record; archived people can be restored.
 - Existing non-empty tabs must have exactly the expected headers. If headers differ, initialization stops rather than overwriting or deleting existing data.
 - The previous four-tab `Participants` header can be upgraded automatically only when the tab has no data rows. If it already contains records, initialization stops and asks for a deliberate migration; it does not guess person identities.
 - Initialization is safe to repeat. It rewrites only the expected header rows and never clears or rewrites records below row 1. It also performs a batched header write to verify write permission.
 
-The spreadsheet URL is kept in the current Streamlit session and copied into the bill draft when continuing to Page 2. Database writes of completed expenses are a separate follow-up feature; this change only adds connection testing and schema initialization.
+The spreadsheet URL is kept in the current Streamlit session and copied into the bill draft when continuing to Page 2. Saving uses stable UUIDs for each row. If a multi-tab save is interrupted, retrying the same save skips IDs already written and appends only missing rows. Google Sheets does not provide a transaction across tabs, so the UI reports failures and preserves the retry bundle.
 
 ## Application pages
-- **Page 1 — Bill setup:** expense name, expense date (defaults to Singapore's current date), participants, optional receipt total, billing mode and initial number of item rows (default 3).
+- **Page 1 — Bill setup:** expense name, expense date (defaults to Singapore's current date), optional receipt total, billing mode, initial number of item rows (default 3), Google Sheets connection controls, and reusable People management (select, add, rename, archive and restore people).
 - **Page 2 — Item entry:** item names, prices and participant assignments. Add or remove item rows dynamically.
-- **Page 3 — Results:** charge-inclusive item/person allocation matrix, copyable WhatsApp breakdowns, and receipt reconciliation. Database saving remains a disabled placeholder.
+- **Page 3 — Results:** charge-inclusive item/person allocation matrix, copyable WhatsApp breakdowns, receipt reconciliation, and saving completed expenses to Google Sheets.
 
 The in-progress bill is held in Streamlit session state while the user navigates between pages.
 
@@ -79,6 +80,8 @@ The in-progress bill is held in Streamlit session state while the user navigates
 - **Navigation:** app.py
 - **Page UI:** pages/1_Bill_Setup.py, pages/2_Item_Entry.py, pages/3_Results.py
 - **Shared page state and input conversion:** pages/common.py
+- **Google Sheets schema and connection setup:** database/google_sheets.py
+- **Google Sheets People and expense persistence:** database/sheets_repository.py
 - **WhatsApp share formatting:** presentation/share_format.py
 - **Domain data structures:** expense_splitter/models.py
 - **Calculations and item/person allocation:** expense_splitter/calculator.py
@@ -96,4 +99,4 @@ Keep GST, service charge, allocation and reconciliation rules in expense_splitte
 - Receipt total is optional. Differences over SGD 0.01 are reported, not silently distributed.
 - Money calculations use Decimal.
 
-This is an educational prototype, not tax advice. Discounts, vouchers, database persistence, establishment-specific nett treatment and advanced POS rounding are out of scope for this update.
+This is an educational prototype, not tax advice. Discounts, vouchers, expense-history browsing, establishment-specific nett treatment and advanced POS rounding are out of scope for this update.
