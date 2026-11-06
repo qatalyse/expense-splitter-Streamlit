@@ -1,5 +1,6 @@
 """Domain models for expense bills and detailed split results."""
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 
 
@@ -26,6 +27,8 @@ class Bill:
     items: list[Item]
     billing: BillingRules = field(default_factory=BillingRules)
     receipt_total: Decimal | None = None
+    expense_name: str = ""
+    expense_date: date | None = None
 
 
 @dataclass(frozen=True)
