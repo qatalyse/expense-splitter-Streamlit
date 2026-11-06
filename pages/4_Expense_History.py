@@ -1,4 +1,5 @@
 """Search and browse saved expense summaries, loading details only on demand."""
+
 import streamlit as st
 
 from database.google_sheets import GoogleSheetsSetupError
