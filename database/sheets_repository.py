@@ -211,6 +211,8 @@ def build_expense_bundle(draft: dict, result) -> dict:
         "reconciled": result.reconciled if result.reconciled is not None else "",
         "created_at": created_at,
         "calculation_version": CALCULATION_VERSION,
+        "updated_at": created_at,
+        "revision": "1",
     }
 
     participant_rows = []
@@ -736,91 +738,52 @@ def build_update_bundle(draft: dict, result, existing_details: dict) -> dict:
     existing_expense = existing_details["expense"]
     bundle["expense_id"] = expense_id
 
-    old_participant_by_person = {
+    old_participants = {
         row.get("person_id"): row
         for row in existing_details["Participants"]
     }
-    participant_id_by_name = {}
+    new_participant_ids = {}
     for row in bundle["Participants"]:
-        old = old_participant_by_person.get(row["person_id"])
-        if old:
-            row["participant_id"] = old["participant_id"]
-        participant_id_by_name[row["name_snapshot"]] = row["participant_id"]
+        generated_id = row["participant_id"]
+        previous = old_participants.get(row["person_id"])
+        if previous:
+            row["participant_id"] = previous["participant_id"]
+        new_participant_ids[generated_id] = row["participant_id"]
+        row["expense_id"] = expense_id
 
-    old_item_ids = {
+    new_item_ids = {}
+    old_items = {
         row.get("item_id"): row
         for row in existing_details["Items"]
     }
-    old_item_ids_by_index = {
-        index: row for index, row in enumerate(existing_details["Items"])
-    }
     for index, row in enumerate(bundle["Items"]):
+        generated_id = row["item_id"]
         draft_item = draft["items"][index]
-        old_item = old_item_ids.get(draft_item.get("item_id"))
-        if old_item:
-            row["item_id"] = old_item["item_id"]
+        previous = old_items.get(draft_item.get("item_id"))
+        if previous:
+            row["item_id"] = previous["item_id"]
+        new_item_ids[generated_id] = row["item_id"]
+        row["expense_id"] = expense_id
 
-    # Preserve allocation IDs where the item and participant relationship remains.
-    old_allocation_ids = {
+    old_allocations = {
         (row.get("item_id"), row.get("participant_id")): row.get("allocation_id")
         for row in existing_details["Allocations"]
     }
-    item_id_by_name_and_index = {
-        (index, row["item_name"]): row["item_id"]
-        for index, row in enumerate(bundle["Items"])
-    }
-    original_allocations = bundle["Allocations"]
-    for row in original_allocations:
-        # The builder has already generated item and participant IDs. Resolve
-        # the corresponding new item by the allocation's original row order.
-        item_index = next(
-            (i for i, item in enumerate(bundle["Items"])
-             if item["item_name"] == next(
-                 (draft_item["name"] for draft_item in draft["items"]
-                  if draft_item.get("item_id") == item.get("item_id")),
-                 item["item_name"],
-             )),
-            None,
-        )
-        if item_index is None:
-            continue
-
-    # Rebuild allocations after all preserved item/participant IDs are known.
-    old_alloc_by_pair = old_allocation_ids
-    allocations_by_item_name = {
-        item["item_name"]: item["item_id"] for item in bundle["Items"]
-    }
-    old_item_by_name = {
-        row.get("item_name"): row.get("item_id")
-        for row in existing_details["Items"]
-    }
     for row in bundle["Allocations"]:
-        person_name = next(
-            (name for name, pid in participant_id_by_name.items()
-             if pid == row["participant_id"]),
-            None,
+        generated_item_id = row["item_id"]
+        generated_participant_id = row["participant_id"]
+        row["item_id"] = new_item_ids[generated_item_id]
+        row["participant_id"] = new_participant_ids[generated_participant_id]
+        row["expense_id"] = expense_id
+        previous_allocation_id = old_allocations.get(
+            (row["item_id"], row["participant_id"])
         )
-        if person_name is None:
-            continue
-        item_name = next(
-            (item["item_name"] for item in bundle["Items"]
-             if item["item_id"] == row["item_id"]),
-            None,
-        )
-        old_item_id = old_item_by_name.get(item_name)
-        old_participant = old_participant_by_person.get(
-            next((pid for pid, person in old_participant_by_person.items()
-                  if person.get("name_snapshot") == person_name), None)
-        )
-        old_participant_id = old_participant.get("participant_id") if old_participant else None
-        previous_id = old_alloc_by_pair.get((old_item_id, old_participant_id))
-        if previous_id:
-            row["allocation_id"] = previous_id
+        if previous_allocation_id:
+            row["allocation_id"] = previous_allocation_id
 
-    original = existing_expense
     expense = bundle["Expenses"][0]
     expense["expense_id"] = expense_id
-    expense["created_at"] = original.get("created_at", expense["created_at"])
+    expense["created_at"] = existing_expense.get("created_at", expense["created_at"])
     expense["updated_at"] = _now()
-    expense["revision"] = str(int(original.get("revision") or "1") + 1)
+    expense["revision"] = str(int(existing_expense.get("revision") or "1") + 1)
     return bundle
