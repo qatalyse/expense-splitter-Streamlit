@@ -287,20 +287,20 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
                 },
             ).execute()
 
-        # Header writes are batched. Existing record rows are never cleared.
+        # Re-write the expected header rows in one batch. This is idempotent,
+        # never changes record rows, and verifies the caller has write permission.
         data = [
             {
                 "range": f"'{title}'!A1",
                 "majorDimension": "ROWS",
                 "values": [list(SHEET_SCHEMA[title])],
             }
-            for title in headers_to_write
+            for title in SHEET_SCHEMA
         ]
-        if data:
-            service.spreadsheets().values().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body={"valueInputOption": "RAW", "data": data},
-            ).execute()
+        service.spreadsheets().values().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"valueInputOption": "RAW", "data": data},
+        ).execute()
 
         final_metadata = service.spreadsheets().get(
             spreadsheetId=spreadsheet_id,
