@@ -378,6 +378,20 @@ def _read_rows_with_numbers(service, spreadsheet_id: str, tab: str) -> list[dict
     return records
 
 
+def _assert_expense_schema(service, spreadsheet_id: str) -> None:
+    """Require the migrated expense schema before browsing or modifying history."""
+    response = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range="'Expenses'!1:1",
+    ).execute()
+    headers = response.get("values", [[]])[0] if response.get("values") else []
+    if headers != list(SHEET_SCHEMA["Expenses"]):
+        raise GoogleSheetsSetupError(
+            "The Expenses tab needs the latest schema for history and editing. "
+            "Open Bill setup and click Initialize database before continuing."
+        )
+
+
 def list_expense_summaries(
     spreadsheet_url: str,
     page: int = 0,
@@ -398,6 +412,7 @@ def list_expense_summaries(
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
     try:
         service = _sheets_service()
+        _assert_expense_schema(service, spreadsheet_id)
         search_text = search.strip().casefold()
         if search_text or date_from or date_to:
             all_rows = _read_rows_with_numbers(service, spreadsheet_id, "Expenses")
@@ -466,6 +481,7 @@ def get_expense_details(spreadsheet_url: str, expense_id: str) -> dict:
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
     try:
         service = _sheets_service()
+        _assert_expense_schema(service, spreadsheet_id)
         metadata = service.spreadsheets().get(
             spreadsheetId=spreadsheet_id,
             fields="sheets(properties(sheetId,title))",
@@ -666,6 +682,19 @@ def update_expense_bundle(
     spreadsheet_id = extract_spreadsheet_id(spreadsheet_url)
     details = get_expense_details(spreadsheet_url, bundle["expense_id"])
     current_revision = int(details["expense"].get("revision") or "1")
+    target_expense = bundle["Expenses"][0]
+    # A client may time out after Google has atomically accepted the update.
+    # Recognise that exact already-applied revision as a successful retry.
+    if (
+        current_revision == expected_revision + 1
+        and details["expense"].get("updated_at") == target_expense.get("updated_at")
+    ):
+        return {
+            "expense_id": bundle["expense_id"],
+            "revision": current_revision,
+            "updated": True,
+            "already_applied": True,
+        }
     if current_revision != expected_revision:
         raise GoogleSheetsSetupError(
             "This expense was modified after you opened it. Reload it from Expense "
