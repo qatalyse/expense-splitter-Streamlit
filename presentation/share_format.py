@@ -41,7 +41,7 @@ def format_person_message(
     title = expense_name.strip() or "Expense"
     header = f"{title} {expense_date:%d/%m/%Y}"
     return "\n".join([
-        header, "", _FENCE,
+        _FENCE, header, "",
         *_person_lines(person, item_allocations, total),
         _FENCE,
     ])
@@ -57,7 +57,7 @@ def format_all_message(
     """Return a single message containing all participants' breakdowns."""
     title = expense_name.strip() or "Expense"
     header = f"{title} {expense_date:%d/%m/%Y}"
-    lines = [header, "", _FENCE]
+    lines = [_FENCE, header, ""]
     for index, (person, total) in enumerate(people.items()):
         if index:
             lines.extend(["", ""])
