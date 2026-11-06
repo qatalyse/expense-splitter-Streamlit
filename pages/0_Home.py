@@ -8,8 +8,6 @@ from database.google_sheets import (
 )
 from pages.common import clear_draft
 
-st.title("Expense Splitter")
-
 spreadsheet_url = st.session_state.get("setup_spreadsheet_url", "").strip()
 if not spreadsheet_url:
     try:
@@ -48,10 +46,6 @@ st.divider()
 
 # Database setup lives on Home so connection management is available before
 # entering either workflow. The title is intentionally omitted to keep Home light.
-st.caption(
-    "Connect your Google Sheet to save new expenses and retrieve your expense history. "
-    "The service account needs Editor access to the spreadsheet."
-)
 spreadsheet_url = st.text_input(
     "Google Sheets URL",
     key="setup_spreadsheet_url",
@@ -86,12 +80,25 @@ initialization_notice = st.session_state.pop("sheets_initialization_notice", Non
 if initialization_notice:
     st.success(initialization_notice)
 
-if st.button(
-    "Test connection",
-    use_container_width=True,
-    disabled=not current_url,
-    help="Checks whether the service account can access this spreadsheet. Does not change it.",
-):
+test_col, initialize_col = st.columns(2)
+with test_col:
+    test_clicked = st.button(
+        "Test connection",
+        use_container_width=True,
+        disabled=not current_url,
+        help="Checks whether the service account can access this spreadsheet. Does not change it.",
+    )
+
+with initialize_col:
+    initialize_clicked = st.button(
+        "Initialize database",
+        type="primary",
+        use_container_width=True,
+        disabled=not current_url,
+        help="Creates or validates the five required tabs and their headers.",
+    )
+
+if test_clicked:
     st.session_state.pop("sheets_connection", None)
     st.session_state.pop("sheets_tested_url", None)
     st.session_state.pop("sheets_database_ready_url", None)
@@ -107,13 +114,7 @@ if st.button(
     except (ValueError, GoogleSheetsSetupError) as exc:
         st.error(str(exc))
 
-if st.button(
-    "Initialize database",
-    type="primary",
-    use_container_width=True,
-    disabled=not current_url,
-    help="Creates or validates the five required tabs and their headers.",
-):
+if initialize_clicked:
     if st.session_state.get("sheets_tested_url") != current_url:
         st.warning(
             "Test this spreadsheet connection successfully before initializing it."
