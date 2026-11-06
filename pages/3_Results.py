@@ -1,13 +1,15 @@
-"""Page 3: calculation results and next-step actions."""
+"""Page 3: itemised matrix, copyable participant messages and reconciliation."""
+import pandas as pd
 import streamlit as st
 
-from pages.common import clear_draft, ensure_draft
+from pages.common import clear_draft, ensure_draft, singapore_today
+from pages.share_format import format_all_message, format_person_message
 
-ensure_draft()
+draft = ensure_draft()
 result = st.session_state.get("calculated_result")
 
 st.title("Expense breakdown")
-st.caption("Review the calculated amounts and compare them with the receipt.")
+st.caption("Review each person's share by item. Item amounts already include applicable charges.")
 st.progress(1.0, text="Page 3 of 3 · Results")
 
 if result is None:
@@ -16,16 +18,57 @@ if result is None:
         st.switch_page("pages/2_Item_Entry.py")
     st.stop()
 
-st.subheader("Bill breakdown")
-subtotal_col, service_col, gst_col, total_col = st.columns(4)
-subtotal_col.metric("Subtotal", f"SGD {result.subtotal:.2f}")
-service_col.metric("Service charge", f"SGD {result.service_charge:.2f}")
-gst_col.metric("GST", f"SGD {result.gst:.2f}")
-total_col.metric("Calculated total", f"SGD {result.calculated_total:.2f}")
+expense_name = draft.get("expense_name", "").strip() or "Expense"
+expense_date = draft.get("expense_date") or singapore_today()
 
-st.subheader("Per-person share")
+st.subheader("Bill total")
+st.metric("Calculated total", f"SGD {result.calculated_total:.2f}")
+
+st.subheader("Itemised allocation")
+st.caption("Each cell shows that person's share of the item, including allocated GST and service charge.")
+people = list(result.per_person)
+table_rows = []
+for allocation in result.item_allocations:
+    row = {"Item": allocation.item_name}
+    for person in people:
+        amount = allocation.per_person.get(person)
+        row[person] = f"SGD {amount:.2f}" if amount is not None else "—"
+    row["Item total"] = f"SGD {allocation.total:.2f}"
+    table_rows.append(row)
+
+total_row = {"Item": "TOTAL OWED"}
+for person in people:
+    total_row[person] = f"SGD {result.per_person[person]:.2f}"
+total_row["Item total"] = f"SGD {result.calculated_total:.2f}"
+table_rows.append(total_row)
+
+st.table(pd.DataFrame(table_rows, columns=["Item", *people, "Item total"]))
+
+st.subheader("Copy breakdown for group chats")
+st.caption(
+    "Copy a participant's message or the complete breakdown. "
+    "Triple backticks are included so WhatsApp can render the text in monospace."
+)
 for person, amount in result.per_person.items():
-    st.write(f"**{person}** — SGD {amount:.2f}")
+    with st.expander(f"{person} · SGD {amount:.2f}", expanded=False):
+        message = format_person_message(
+            expense_name,
+            expense_date,
+            person,
+            result.item_allocations,
+            amount,
+        )
+        st.code(message, language="text")
+
+all_message = format_all_message(
+    expense_name,
+    expense_date,
+    result.per_person,
+    result.item_allocations,
+    result.calculated_total,
+)
+st.markdown("**All participants**")
+st.code(all_message, language="text")
 
 st.subheader("Receipt reconciliation")
 if result.receipt_total is None:
