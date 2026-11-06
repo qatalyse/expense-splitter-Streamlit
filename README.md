@@ -1,52 +1,55 @@
-# Expense Splitter
+# Expense Splitter — Streamlit
 
-Python-first expense-splitting prototype with a mobile-accessible UI. The calculation core is independent from the frontend.
+Python-first, mobile-friendly expense splitter with a three-step workflow and a UI-independent calculation engine.
 
 ## Requirements
+
 - Python 3.10+
 - Git
 
-## Setup
-Clone this repository, enter its directory, create and activate a virtual environment:
+## Setup (Ubuntu / Linux)
 
-    python -m venv .venv
-    # macOS/Linux
-    source .venv/bin/activate
-    # Windows PowerShell
-    .venv\Scripts\Activate.ps1
+```bash
+git clone https://github.com/qatalyse/expense-splitter-Streamlit.git
+cd expense-splitter-Streamlit
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
 
-Install dependencies:
+## Run and test
 
-    python -m pip install --upgrade pip
-    pip install -r requirements.txt
+```bash
+python -m unittest discover -s tests
+streamlit run app.py
+```
 
-## Run
-Streamlit version:
+Open the local URL shown by Streamlit (usually http://localhost:8501). For phone testing on the same Wi-Fi, run `streamlit run app.py --server.address 0.0.0.0` and open the computer's LAN IP and port from the phone. Do not expose the development server directly to the internet.
 
-    streamlit run app.py
+## Workflow
 
-NiceGUI version:
+1. **Bill setup:** enter comma-separated participant names, optional receipt total, billing mode, and initial item count (default **3**).
+2. **Enter items:** item rows start at the requested count. Use **Add another item** or the per-item **✕** button to add/remove rows instantly. Assign people with multiselect (no retyping). **Calculate** moves to results.
+3. **Results:** review per-person totals, GST, service charge, and receipt checksum. **Edit items** goes back without losing the draft. **Save to database** is deliberately disabled until persistence is implemented.
 
-    python app.py
+**Start over / Reset** requires confirmation. Drafts live in Streamlit session state and are not persistent across session loss, server restart, or browser session expiration. Returning to setup preserves existing items; changing the initial item count after item entry does not overwrite the draft. Use add/remove controls to change its size.
 
-Open the local URL printed in the terminal. To try it on a phone on the same Wi-Fi, configure the development server to bind to the computer's LAN interface, then open the computer's LAN IP from the phone. Firewall settings may need adjustment. Do not expose a development server directly to the public internet.
+## Where to modify things
 
-## Where to change things
-- **UI and interactions:** app.py
-- **Data structures:** expense_splitter/models.py
-- **Calculations and item allocation:** expense_splitter/calculator.py
-- **Receipt checksum:** expense_splitter/reconciliation.py
-- **Tests:** tests/test_calculator.py
+- `app.py`: thin entry point, step routing, reset confirmation.
+- `ui/setup.py`: setup page.
+- `ui/items.py`: dynamic rows, participant selection, Calculate action.
+- `ui/results.py`: result presentation and future Save action.
+- `ui/state.py`: session-state draft, navigation data, stable item IDs.
+- `expense_splitter/models.py`: bill/item/result domain models.
+- `expense_splitter/calculator.py`: calculation, GST, service charge, rounding, allocation.
+- `expense_splitter/reconciliation.py`: receipt-total checksum.
+- `tests/`: automated tests.
 
-Keep GST, service charge, rounding and allocation policy out of app.py. The frontend should build a Bill, call split_expense(bill), and display the returned SplitResult.
+The UI builds a `Bill`, calls `split_expense(bill)`, and renders `SplitResult`. Keep business rules out of the UI modules.
 
-## MVP assumptions
-- Add participants, items and participant assignments for each item.
-- Shared items are divided in cents; remainder cents are assigned deterministically.
-- GST defaults to 9% and service charge to 10%; both can be toggled independently.
-- Service charge applies to subtotal; GST applies to subtotal plus service charge.
-- Nett mode treats entered prices as final and adds no extra GST/service charge.
-- Receipt total is optional. Differences over SGD 0.01 are reported, not silently distributed.
-- Uses Decimal for money.
+## MVP assumptions and deferred work
 
-This is an educational prototype, not tax advice. Discounts, vouchers, establishment-specific nett treatment and advanced POS rounding are out of scope for this MVP.
+GST defaults to 9%; service charge to 10%. Service charge applies to the subtotal, and GST applies to subtotal plus service charge. Nett means the entered prices are final. The receipt total is an optional checksum; discrepancies are not silently allocated. Money uses `Decimal`.
+
+Database saving, history, vouchers, discounts, and advanced POS rounding are **not yet implemented**. This is an educational prototype, not tax advice.
