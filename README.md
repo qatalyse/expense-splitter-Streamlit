@@ -59,9 +59,12 @@ The application can also use a root-level `expense-splitter-service.json` withou
 
 - **Test connection** performs a read-only metadata request. It confirms the credentials can open the spreadsheet but does not modify it.
 - **Initialize database** requires a successful test for the current URL. It creates any missing tabs and writes the expected header row.
-- The four tabs are `Expenses`, `Participants`, `Items`, and `Allocations`.
+- The five tabs are `People`, `Expenses`, `Participants`, `Items`, and `Allocations`.
+- `People` is an independent master directory of reusable identities (`person_id`, `display_name`, timestamps); it is not a child of `Expenses`.
+- `Participants` links a person to one expense using `person_id` and keeps a `name_snapshot` for historical display. `Allocations` references the expense-specific `participant_id` and item ID.
 - Existing non-empty tabs must have exactly the expected headers. If headers differ, initialization stops rather than overwriting or deleting existing data.
-- Initialization is safe to repeat. It does not clear existing rows.
+- The previous four-tab `Participants` header can be upgraded automatically only when the tab has no data rows. If it already contains records, initialization stops and asks for a deliberate migration; it does not guess person identities.
+- Initialization is safe to repeat. It rewrites only the expected header rows and never clears or rewrites records below row 1. It also performs a batched header write to verify write permission.
 
 The spreadsheet URL is kept in the current Streamlit session and copied into the bill draft when continuing to Page 2. Database writes of completed expenses are a separate follow-up feature; this change only adds connection testing and schema initialization.
 
