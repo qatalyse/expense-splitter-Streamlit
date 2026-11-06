@@ -960,6 +960,7 @@ def get_combined_person_expenses(
     person_id: str,
     person_name: str,
     expense_ids: list[str],
+    include_archived: bool = False,
 ) -> list[dict]:
     """Load selected expense items and stored shares for one person.
 
@@ -984,8 +985,11 @@ def get_combined_person_expenses(
             row.get("expense_id"): row
             for row in summaries
             if row.get("expense_id") in selected
-            and str(row.get("is_archived", "FALSE")).strip().casefold()
-                not in {"true", "1", "yes"}
+            and (
+                include_archived
+                or str(row.get("is_archived", "FALSE")).strip().casefold()
+                    not in {"true", "1", "yes"}
+            )
         }
         if set(selected_ids) - set(summary_by_id):
             raise ValueError(
@@ -1005,12 +1009,10 @@ def get_combined_person_expenses(
             )
 
         items_by_expense: dict[str, list[dict]] = {}
-        item_by_id = {}
         for item in items:
             expense_id = item.get("expense_id")
             if expense_id in selected:
                 items_by_expense.setdefault(expense_id, []).append(item)
-                item_by_id[item.get("item_id")] = item
 
         allocations_by_expense: dict[str, list[dict]] = {}
         for allocation in allocations:
