@@ -114,4 +114,4 @@ Keep GST, service charge, allocation and reconciliation rules in expense_splitte
 - Receipt total is optional. Differences over SGD 0.01 are reported, not silently distributed.
 - Money calculations use Decimal.
 
-This is an educational prototype, not tax advice. Discounts, vouchers, expense-history browsing, establishment-specific nett treatment and advanced POS rounding are out of scope for this update.
+This is an educational prototype, not tax advice. Discounts, vouchers, deletion and duplication of saved expenses, full audit history, establishment-specific nett treatment and advanced POS rounding remain out of scope.
