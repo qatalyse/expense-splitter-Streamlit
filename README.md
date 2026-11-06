@@ -36,6 +36,38 @@ Streamlit prints a local URL. To try the application on a phone on the same Wi-F
 
 Then open the computer's LAN IP and Streamlit port on the phone. Firewall/network settings may need adjustment. Do not expose a development server directly to the public internet.
 
+## Google Sheets connection
+
+Page 1 includes a Google Sheets URL field, **Test connection**, and **Initialize database** controls below the initial item-row count.
+
+### Local credentials
+
+1. Enable the Google Sheets API in a Google Cloud project.
+2. Create a service account and download its JSON key.
+3. Share the target spreadsheet with the service-account email as **Editor**.
+4. Keep the JSON key in the repository root as `expense-splitter-service.json`. This filename is excluded by `.gitignore`.
+
+Optionally create `.streamlit/secrets.toml` to store the spreadsheet URL and local key path:
+
+    [google_sheets]
+    spreadsheet_url = "https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit"
+    credentials_file = "expense-splitter-service.json"
+
+The application can also use a root-level `expense-splitter-service.json` without a secrets file. For Streamlit Community Cloud, put the service-account JSON fields under `[gcp_service_account]` in the app's Secrets settings; do not upload the JSON key to GitHub.
+
+### Test and initialize
+
+- **Test connection** performs a read-only metadata request. It confirms the credentials can open the spreadsheet but does not modify it.
+- **Initialize database** requires a successful test for the current URL. It creates any missing tabs and writes the expected header row.
+- The five tabs are `People`, `Expenses`, `Participants`, `Items`, and `Allocations`.
+- `People` is an independent master directory of reusable identities (`person_id`, `display_name`, timestamps); it is not a child of `Expenses`.
+- `Participants` links a person to one expense using `person_id` and keeps a `name_snapshot` for historical display. `Allocations` references the expense-specific `participant_id` and item ID.
+- Existing non-empty tabs must have exactly the expected headers. If headers differ, initialization stops rather than overwriting or deleting existing data.
+- The previous four-tab `Participants` header can be upgraded automatically only when the tab has no data rows. If it already contains records, initialization stops and asks for a deliberate migration; it does not guess person identities.
+- Initialization is safe to repeat. It rewrites only the expected header rows and never clears or rewrites records below row 1. It also performs a batched header write to verify write permission.
+
+The spreadsheet URL is kept in the current Streamlit session and copied into the bill draft when continuing to Page 2. Database writes of completed expenses are a separate follow-up feature; this change only adds connection testing and schema initialization.
+
 ## Application pages
 - **Page 1 — Bill setup:** expense name, expense date (defaults to Singapore's current date), participants, optional receipt total, billing mode and initial number of item rows (default 3).
 - **Page 2 — Item entry:** item names, prices and participant assignments. Add or remove item rows dynamically.
