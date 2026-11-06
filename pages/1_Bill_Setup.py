@@ -4,11 +4,7 @@ from datetime import date
 
 import streamlit as st
 
-from database.google_sheets import (
-    GoogleSheetsSetupError,
-    initialize_database,
-    test_connection,
-)
+from database.google_sheets import GoogleSheetsSetupError
 from database.sheets_repository import (
     add_person,
     archive_person,
@@ -89,79 +85,8 @@ initial_count = st.number_input(
     help="Defaults to 3. You can add or remove rows on the next page.",
 )
 
-# Keep the database configuration controls directly below the initial row count.
-st.divider()
-st.subheader("Google Sheets database")
-spreadsheet_url = st.text_input(
-    "Google Sheets URL",
-    key="setup_spreadsheet_url",
-    placeholder="https://docs.google.com/spreadsheets/d/...",
-    help="The service account must have Editor access to this spreadsheet.",
-)
-
-current_url = spreadsheet_url.strip()
-last_connection = st.session_state.get("sheets_connection")
-tested_url = st.session_state.get("sheets_tested_url")
-
-if current_url and tested_url == current_url and last_connection:
-    st.success(f"Connected to **{last_connection['title']}**.")
-elif tested_url and tested_url != current_url:
-    st.info("The spreadsheet URL changed. Test the new URL before managing people or saving expenses.")
-
-test_col, initialize_col = st.columns(2)
-with test_col:
-    test_clicked = st.button(
-        "Test connection",
-        use_container_width=True,
-        disabled=not current_url,
-    )
-with initialize_col:
-    initialize_clicked = st.button(
-        "Initialize database",
-        type="primary",
-        use_container_width=True,
-        disabled=not current_url,
-        help="Creates or validates the five required tabs and their headers.",
-    )
-
-if test_clicked:
-    st.session_state.pop("sheets_connection", None)
-    st.session_state.pop("sheets_tested_url", None)
-    st.session_state.pop("sheets_database_ready_url", None)
-    st.session_state.pop("people_directory_cache", None)
-    try:
-        connection = test_connection(current_url)
-        st.session_state["sheets_connection"] = connection
-        st.session_state["sheets_tested_url"] = current_url
-        st.success(
-            f"Connection successful: **{connection['title']}**. "
-            f"Existing tabs: {', '.join(connection['sheets']) or 'none'}."
-        )
-    except (ValueError, GoogleSheetsSetupError) as exc:
-        st.error(str(exc))
-
-if initialize_clicked:
-    if st.session_state.get("sheets_tested_url") != current_url:
-        st.warning("Test this spreadsheet connection successfully before initializing it.")
-    else:
-        try:
-            setup_result = initialize_database(current_url)
-            st.session_state["sheets_database_ready_url"] = current_url
-            st.session_state.pop("people_directory_cache", None)
-            created = setup_result["created_tabs"]
-            if created:
-                st.success("Database initialized. Created tabs: " + ", ".join(created) + ".")
-            else:
-                st.success("Database is ready. All five tabs and headers are present.")
-            upgraded = setup_result.get("upgraded_legacy_tabs", [])
-            if upgraded:
-                st.info(
-                    "Upgraded existing tab headers: " + ", ".join(upgraded)
-                    + ". Existing records were preserved."
-                )
-        except (ValueError, GoogleSheetsSetupError) as exc:
-            st.error(str(exc))
-
+# Database connection and initialization are managed from the Home page.
+current_url = st.session_state.get("setup_spreadsheet_url", "").strip()
 database_ready = (
     bool(current_url)
     and st.session_state.get("sheets_database_ready_url") == current_url
@@ -274,13 +199,20 @@ if database_ready:
     # Participant selector uses permanent person IDs; calculations continue to
     # use the selected display names, with a name-to-ID map retained for saving.
     st.subheader("Participants for this expense")
-    active_by_id = {person["person_id"]: person for person in active_people}
+    prior_person_ids = set(draft.get("participant_ids", []))
+    archived_current_people = [
+        person for person in archived_people
+        if person["person_id"] in prior_person_ids
+    ]
+    selectable_people = active_people + archived_current_people
+    active_by_id = {person["person_id"]: person for person in selectable_people}
     if "setup_selected_person_ids" not in st.session_state:
         prior_names = set(draft.get("participants", []))
         st.session_state["setup_selected_person_ids"] = [
             person["person_id"]
-            for person in active_people
-            if person["display_name"] in prior_names
+            for person in selectable_people
+            if person["person_id"] in prior_person_ids
+            or person["display_name"] in prior_names
         ]
     valid_selection = [
         person_id
@@ -298,9 +230,10 @@ if database_ready:
     def person_option_label(person_id: str) -> str:
         person = active_by_id[person_id]
         name = person["display_name"]
+        suffix = " · Archived (existing expense)" if not person.get("is_active", True) else ""
         if active_name_counts[name.strip().casefold()] > 1:
-            return f"{name} · {person_id[:8]}"
-        return name
+            return f"{name} · {person_id[:8]}{suffix}"
+        return f"{name}{suffix}"
 
     selected_ids = st.multiselect(
         "Select people sharing this bill",
@@ -398,3 +331,7 @@ if st.button("Continue to item entry", type="primary", use_container_width=True)
         st.switch_page("pages/2_Item_Entry.py")
     except ValueError as exc:
         st.error(str(exc))
+
+
+if st.button("← Home", use_container_width=True):
+    st.switch_page("pages/0_Home.py")

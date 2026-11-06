@@ -1,11 +1,16 @@
 """Page 3: itemised matrix, copyable participant messages and reconciliation."""
-import pandas as pd
 import streamlit as st
 
 from database.google_sheets import GoogleSheetsSetupError
-from database.sheets_repository import build_expense_bundle, save_expense_bundle
+from database.sheets_repository import (
+    build_expense_bundle,
+    build_update_bundle,
+    get_expense_details,
+    save_expense_bundle,
+    update_expense_bundle,
+)
 from pages.common import clear_draft, ensure_draft, singapore_today
-from presentation.share_format import format_all_message, format_person_message
+from presentation.expense_breakdown import render_expense_breakdown
 
 draft = ensure_draft()
 result = st.session_state.get("calculated_result")
@@ -23,54 +28,7 @@ if result is None:
 expense_name = draft.get("expense_name", "").strip() or "Expense"
 expense_date = draft.get("expense_date") or singapore_today()
 
-st.subheader("Bill total")
-st.metric("Calculated total", f"SGD {result.calculated_total:.2f}")
-
-st.subheader("Itemised allocation")
-st.caption("Each cell shows that person's share of the item, including allocated GST and service charge.")
-people = list(result.per_person)
-table_rows = []
-for allocation in result.item_allocations:
-    row = {"Item": allocation.item_name}
-    for person in people:
-        amount = allocation.per_person.get(person)
-        row[person] = f"SGD {amount:.2f}" if amount is not None else "—"
-    row["Item total"] = f"SGD {allocation.total:.2f}"
-    table_rows.append(row)
-
-total_row = {"Item": "TOTAL OWED"}
-for person in people:
-    total_row[person] = f"SGD {result.per_person[person]:.2f}"
-total_row["Item total"] = f"SGD {result.calculated_total:.2f}"
-table_rows.append(total_row)
-
-st.table(pd.DataFrame(table_rows, columns=["Item", *people, "Item total"]))
-
-st.subheader("Copy breakdown for group chats")
-st.caption(
-    "Copy a participant's message or the complete breakdown. "
-    "Triple backticks are included so WhatsApp can render the text in monospace."
-)
-for person, amount in result.per_person.items():
-    with st.expander(f"{person} · SGD {amount:.2f}", expanded=False):
-        message = format_person_message(
-            expense_name,
-            expense_date,
-            person,
-            result.item_allocations,
-            amount,
-        )
-        st.code(message, language="text")
-
-all_message = format_all_message(
-    expense_name,
-    expense_date,
-    result.per_person,
-    result.item_allocations,
-    result.calculated_total,
-)
-st.markdown("**All participants**")
-st.code(all_message, language="text")
+render_expense_breakdown(expense_name, expense_date, result)
 
 st.subheader("Receipt reconciliation")
 if result.receipt_total is None:
@@ -99,33 +57,56 @@ database_ready = (
     and st.session_state.get("sheets_database_ready_url") == spreadsheet_url
 )
 saved_expense_id = st.session_state.get("expense_saved_id")
+editing_expense_id = draft.get("editing_expense_id")
 
 if saved_expense_id:
-    st.success(f"Expense saved successfully. Reference: {saved_expense_id}")
+    message = "Expense updated successfully" if editing_expense_id else "Expense saved successfully"
+    st.success(f"{message}. Reference: {saved_expense_id}")
 elif not database_ready:
     st.info("Connect and initialize Google Sheets on Page 1 before saving this expense.")
 else:
-    if st.button("Save expense to Google Sheets", type="primary", use_container_width=True):
+    button_label = "Update existing expense" if editing_expense_id else "Save expense to Google Sheets"
+    if st.button(button_label, type="primary", use_container_width=True):
         try:
-            # Keep the same IDs in session state when retrying a partially completed save.
             if "expense_save_bundle" not in st.session_state:
-                st.session_state["expense_save_bundle"] = build_expense_bundle(draft, result)
-            with st.spinner("Saving expense and allocations to Google Sheets..."):
-                save_summary = save_expense_bundle(
-                    spreadsheet_url,
-                    st.session_state["expense_save_bundle"],
-                )
+                if editing_expense_id:
+                    st.session_state["expense_save_bundle"] = build_update_bundle(
+                        draft,
+                        result,
+                        draft["editing_original_details"],
+                    )
+                else:
+                    st.session_state["expense_save_bundle"] = build_expense_bundle(draft, result)
+
+            with st.spinner("Updating expense..." if editing_expense_id else "Saving expense..."):
+                if editing_expense_id:
+                    save_summary = update_expense_bundle(
+                        spreadsheet_url,
+                        st.session_state["expense_save_bundle"],
+                        expected_revision=int(draft.get("editing_revision", 1)),
+                    )
+                else:
+                    save_summary = save_expense_bundle(
+                        spreadsheet_url,
+                        st.session_state["expense_save_bundle"],
+                    )
+
             st.session_state["expense_saved_id"] = save_summary["expense_id"]
             st.session_state.pop("expense_save_bundle", None)
+            st.session_state.pop("history_detail_cache", None)
+            if editing_expense_id:
+                refreshed_details = get_expense_details(spreadsheet_url, editing_expense_id)
+                draft["editing_original_details"] = refreshed_details
+                draft["editing_revision"] = int(refreshed_details["expense"].get("revision") or "1")
             st.success(
-                "Expense saved to Google Sheets. "
-                f"Reference: {save_summary['expense_id']}"
+                ("Expense updated" if editing_expense_id else "Expense saved")
+                + f" successfully. Reference: {save_summary['expense_id']}"
             )
             st.rerun()
         except (ValueError, GoogleSheetsSetupError, ArithmeticError) as exc:
             st.error(
-                "The save did not complete. You can safely retry; rows already "
-                f"written will be detected and skipped. Details: {exc}"
+                "The operation did not complete. Retry using the same screen; "
+                f"the save bundle is retained. Details: {exc}"
             )
 
 edit_col, reset_col = st.columns(2)

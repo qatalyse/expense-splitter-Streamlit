@@ -1,6 +1,7 @@
 import unittest
 
 from database.google_sheets import (
+    LEGACY_EXPENSE_HEADERS,
     LEGACY_PARTICIPANTS_HEADERS,
     SHEET_SCHEMA,
     extract_spreadsheet_id,
@@ -50,6 +51,10 @@ class DatabaseSchemaTests(unittest.TestCase):
         self.assertIn("expense_id", headers)
         self.assertIn("participant_id", headers)
         self.assertIn("item_id", headers)
+
+    def test_expenses_include_revision_metadata(self):
+        self.assertEqual(SHEET_SCHEMA["Expenses"][-2:], ("updated_at", "revision"))
+        self.assertEqual(len(LEGACY_EXPENSE_HEADERS), len(SHEET_SCHEMA["Expenses"]) - 2)
 
     def test_people_directory_includes_archive_status(self):
         self.assertEqual(

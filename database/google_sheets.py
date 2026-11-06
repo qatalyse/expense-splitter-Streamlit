@@ -43,6 +43,8 @@ SHEET_SCHEMA: dict[str, tuple[str, ...]] = {
         "reconciled",
         "created_at",
         "calculation_version",
+        "updated_at",
+        "revision",
     ),
     "Participants": (
         "participant_id",
@@ -81,6 +83,26 @@ LEGACY_PEOPLE_HEADERS = (
     "display_name",
     "created_at",
     "updated_at",
+)
+LEGACY_EXPENSE_HEADERS = (
+    "expense_id",
+    "expense_name",
+    "expense_date",
+    "currency",
+    "receipt_total",
+    "subtotal",
+    "gst_enabled",
+    "gst_rate",
+    "gst_amount",
+    "service_charge_enabled",
+    "service_charge_rate",
+    "service_charge_amount",
+    "prices_are_nett",
+    "calculated_total",
+    "difference",
+    "reconciled",
+    "created_at",
+    "calculation_version",
 )
 
 _SPREADSHEET_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
@@ -245,6 +267,7 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
         headers_to_write: dict[str, list[str]] = {}
         upgraded_legacy_tabs: list[str] = []
         people_has_existing_rows = False
+        expenses_need_revision_columns = False
         for title, expected_headers in SHEET_SCHEMA.items():
             if title not in existing:
                 headers_to_write[title] = list(expected_headers)
@@ -279,6 +302,12 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
                     service, spreadsheet_id, title
                 )
                 # is_active is an additive column. Existing people remain active.
+                headers_to_write[title] = list(expected_headers)
+                upgraded_legacy_tabs.append(title)
+            elif title == "Expenses" and actual_headers == list(LEGACY_EXPENSE_HEADERS):
+                expenses_need_revision_columns = _has_nonempty_data_rows(
+                    service, spreadsheet_id, title
+                )
                 headers_to_write[title] = list(expected_headers)
                 upgraded_legacy_tabs.append(title)
             else:
@@ -316,6 +345,26 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
             spreadsheetId=spreadsheet_id,
             body={"valueInputOption": "RAW", "data": data},
         ).execute()
+
+        if expenses_need_revision_columns:
+            # Existing records get an update timestamp equal to creation time
+            # and revision 1; these are additive metadata columns.
+            expense_rows = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range="'Expenses'!Q2:Q",
+            ).execute().get("values", [])
+            last_row = len(expense_rows) + 1
+            if last_row >= 2:
+                service.spreadsheets().values().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={
+                        "valueInputOption": "RAW",
+                        "data": [
+                            {"range": f"'Expenses'!S2:S{last_row}", "values": expense_rows},
+                            {"range": f"'Expenses'!T2:T{last_row}", "values": [["1"] for _ in expense_rows]},
+                        ],
+                    },
+                ).execute()
 
         if people_has_existing_rows:
             # The new is_active column defaults existing records to active.
