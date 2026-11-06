@@ -1,4 +1,5 @@
-"""Page 1: participants, receipt total, billing mode and initial item count."""
+"""Page 1: expense name/date, participants, receipt, billing mode and item count."""
+from datetime import date
 import streamlit as st
 
 from pages.common import (
@@ -7,20 +8,35 @@ from pages.common import (
     new_item,
     parse_optional_money,
     parse_participants,
+    singapore_today,
 )
 
 draft = ensure_draft()
 
 st.title("Bill setup")
-st.caption("Set up the people and billing details before entering the items.")
+st.caption("Set up the expense, people and billing details before entering items.")
 st.progress(1 / 3, text="Page 1 of 3 · Bill setup")
 
+st.session_state.setdefault("setup_expense_name", draft["expense_name"])
+st.session_state.setdefault("setup_expense_date", draft["expense_date"])
 st.session_state.setdefault("setup_participants", ", ".join(draft["participants"]))
 st.session_state.setdefault("setup_receipt_total", draft["receipt_total"])
 st.session_state.setdefault("setup_billing_mode", draft["billing_mode"])
 st.session_state.setdefault(
     "setup_initial_item_count",
     max(1, int(draft["initial_item_count"])),
+)
+
+st.subheader("Expense details")
+expense_name = st.text_input(
+    "Expense name (optional)",
+    key="setup_expense_name",
+    placeholder="e.g. Dinner at Restaurant",
+)
+expense_date = st.date_input(
+    "Expense date",
+    key="setup_expense_date",
+    help="Defaults to today's date in Singapore.",
 )
 
 st.subheader("Participants")
@@ -69,7 +85,11 @@ if st.button("Continue to item entry", type="primary", use_container_width=True)
     try:
         participants = parse_participants(participants_text)
         parse_optional_money(receipt_text, "Receipt total")
+        if not isinstance(expense_date, date):
+            raise ValueError("Select a valid expense date.")
 
+        draft["expense_name"] = expense_name.strip()
+        draft["expense_date"] = expense_date
         draft["participants"] = participants
         draft["receipt_total"] = receipt_text.strip()
         draft["billing_mode"] = billing_mode
@@ -80,7 +100,7 @@ if st.button("Continue to item entry", type="primary", use_container_width=True)
                 person for person in item["participants"] if person in participants
             ]
 
-        # Seed a new draft or append blank rows. Never silently delete existing entries.
+        # Seed a new draft or append blank rows; never silently delete existing entries.
         while len(draft["items"]) < int(initial_count):
             draft["items"].append(new_item())
 
