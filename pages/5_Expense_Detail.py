@@ -62,8 +62,10 @@ st.caption(
 render_expense_breakdown(name, expense_date, result)
 
 st.subheader("Receipt reconciliation")
+status_already_shown = st.session_state.get("_status_rendered_detail_status", False)
 if result.receipt_total is None:
-    render_status(status, "info", "No receipt total was recorded.")
+    if not status_already_shown:
+        render_status(status, "info", "No receipt total was recorded.")
 else:
     receipt_col, difference_col = st.columns(2)
     receipt_col.metric("Receipt total", f"SGD {result.receipt_total:.2f}")
@@ -71,9 +73,9 @@ else:
         "Difference",
         f"SGD {result.difference:+.2f}" if result.difference is not None else "—",
     )
-    if result.reconciled:
+    if not status_already_shown and result.reconciled:
         render_status(status, "success", "The saved receipt reconciliation passed.")
-    elif result.reconciled is False:
+    elif not status_already_shown and result.reconciled is False:
         render_status(status, "warning", "The saved receipt and calculated total did not match.")
 
 view_col, edit_col, duplicate_col = st.columns(3)
