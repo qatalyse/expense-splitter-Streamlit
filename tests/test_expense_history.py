@@ -5,6 +5,7 @@ from decimal import Decimal
 from database.sheets_repository import (
     build_update_bundle,
     draft_from_expense_details,
+    duplicate_draft_from_expense_details,
     historical_result_from_details,
 )
 from expense_splitter import Bill, BillingRules, Item, split_expense
@@ -117,6 +118,20 @@ class HistoricalExpenseTests(unittest.TestCase):
         self.assertEqual(draft["participants"], ["Alice", "Bob"])
         self.assertEqual(draft["items"][0]["item_id"], "item-1")
         self.assertEqual(draft["items"][1]["participants"], ["Alice", "Bob"])
+
+    def test_duplicate_draft_drops_source_expense_and_item_ids(self):
+        duplicate = duplicate_draft_from_expense_details(
+            self.details,
+            "https://docs.google.com/spreadsheets/d/test123/edit",
+        )
+        self.assertNotIn("editing_expense_id", duplicate)
+        self.assertNotIn("editing_revision", duplicate)
+        self.assertEqual(duplicate["expense_name"], "Copy of Dinner")
+        self.assertEqual(duplicate["participant_id_by_name"], {
+            "Alice": "person-alice",
+            "Bob": "person-bob",
+        })
+        self.assertTrue(all("item_id" not in item for item in duplicate["items"]))
 
     def test_update_bundle_retains_expense_person_item_and_matching_allocation_ids(self):
         draft = dict(self.draft)
