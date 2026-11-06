@@ -29,6 +29,11 @@ class PersonExpenseConsolidationRepositoryTests(unittest.TestCase):
                     "participant_id": "part-bob",
                     "person_id": "person-bob",
                 },
+                {
+                    "expense_id": "exp-3",
+                    "participant_id": "part-3",
+                    "person_id": "person-alice",
+                },
             ],
             "Allocations": [
                 {
@@ -51,6 +56,13 @@ class PersonExpenseConsolidationRepositoryTests(unittest.TestCase):
                     "item_id": "item-2",
                     "original_share": "5.00",
                     "final_share": "5.45",
+                },
+                {
+                    "expense_id": "exp-3",
+                    "participant_id": "part-3",
+                    "item_id": "item-3",
+                    "original_share": "4.00",
+                    "final_share": "4.00",
                 },
             ],
             "Expenses": [
@@ -77,6 +89,12 @@ class PersonExpenseConsolidationRepositoryTests(unittest.TestCase):
                 },
             ],
             "Items": [
+                {
+                    "expense_id": "exp-3",
+                    "item_id": "item-3",
+                    "item_name": "Archive item",
+                    "sort_order": "0",
+                },
                 {
                     "expense_id": "exp-1",
                     "item_id": "item-1",
