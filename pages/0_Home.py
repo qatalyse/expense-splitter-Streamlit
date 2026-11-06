@@ -13,10 +13,7 @@ if not spreadsheet_url:
     except (FileNotFoundError, KeyError, RuntimeError):
         spreadsheet_url = ""
 
-database_ready = bool(
-    spreadsheet_url
-    and st.session_state.get("sheets_database_ready_url") == spreadsheet_url
-)
+database_ready = bool(spreadsheet_url)
 
 st.divider()
 new_col, history_col = st.columns(2)
