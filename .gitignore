@@ -4,6 +4,8 @@ __pycache__/
 venv/
 .env
 .pytest_cache/
+
+DEVELOPMENT.md
 # Google Cloud service account credentials
 expense-splitter-service.json
 
