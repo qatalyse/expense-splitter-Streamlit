@@ -8,6 +8,7 @@ def create_status_slot(key: str):
     """Create one replaceable message area and render a pending flash message."""
     slot = st.empty()
     pending = st.session_state.pop(key, None)
+    st.session_state[f"_status_rendered_{key}"] = bool(pending)
     if pending:
         render_status(slot, pending["level"], pending["message"])
     return slot
