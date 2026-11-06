@@ -12,6 +12,7 @@ from database.sheets_repository import (
     restore_person,
     update_person_name,
 )
+from ui.status import create_status_slot, flash_status, render_status
 from pages.common import (
     BILLING_MODES,
     ensure_draft,
@@ -25,6 +26,7 @@ draft = ensure_draft()
 st.title("Bill setup")
 st.caption("Set up the expense, people and billing details before entering items.")
 st.progress(1 / 3, text="Page 1 of 3 · Bill setup")
+status = create_status_slot("setup_status")
 
 st.session_state.setdefault("setup_expense_name", draft["expense_name"])
 st.session_state.setdefault("setup_expense_date", draft["expense_date"])
@@ -93,8 +95,8 @@ database_ready = (
     and st.session_state.get("sheets_tested_url") == current_url
 )
 
-if database_ready:
-    st.success("Google Sheets database is ready.")
+if database_ready and not st.session_state.get("_status_rendered_setup_status", False):
+    render_status(status, "success", "Google Sheets database is ready.")
 
     # Manage the reusable directory on the same setup page.
     st.divider()
@@ -113,7 +115,7 @@ if database_ready:
         people = cache["people"]
     except (ValueError, GoogleSheetsSetupError) as exc:
         people = []
-        st.error(f"Could not load the People directory: {exc}")
+        render_status(status, "error", f"Could not load the People directory: {exc}")
 
     add_name_col, add_button_col = st.columns([3, 1])
     new_name = add_name_col.text_input(
@@ -133,10 +135,10 @@ if database_ready:
             st.session_state["setup_selected_person_ids"] = list(
                 st.session_state.get("setup_selected_person_ids", [])
             ) + [created_person["person_id"]]
-            st.success(f"Added {created_person['display_name']} to People.")
+            flash_status("setup_status", "success", f"Added {created_person['display_name']} to People.")
             st.rerun()
         except (ValueError, GoogleSheetsSetupError) as exc:
-            st.error(str(exc))
+            render_status(status, "error", str(exc))
 
     active_people = [person for person in people if person.get("is_active", True)]
     archived_people = [person for person in people if not person.get("is_active", True)]
@@ -163,10 +165,10 @@ if database_ready:
                                 st.session_state[edit_key],
                             )
                             st.session_state.pop("people_directory_cache", None)
-                            st.success("Display name updated. Historical expense names are unchanged.")
+                            flash_status("setup_status", "success", "Display name updated. Historical expense names are unchanged.")
                             st.rerun()
                         except (ValueError, GoogleSheetsSetupError) as exc:
-                            st.error(str(exc))
+                            render_status(status, "error", str(exc))
                     if archive_col.button("Archive", key=f"archive_person_{person_id}"):
                         try:
                             archive_person(current_url, person_id)
@@ -175,10 +177,10 @@ if database_ready:
                                 value for value in st.session_state.get("setup_selected_person_ids", [])
                                 if value != person_id
                             ]
-                            st.success(f"Archived {person['display_name']}.")
+                            flash_status("setup_status", "success", f"Archived {person['display_name']}.")
                             st.rerun()
                         except (ValueError, GoogleSheetsSetupError) as exc:
-                            st.error(str(exc))
+                            render_status(status, "error", str(exc))
 
     if archived_people:
         with st.expander(f"Archived people ({len(archived_people)})", expanded=False):
@@ -189,10 +191,10 @@ if database_ready:
                     try:
                         restore_person(current_url, person_id)
                         st.session_state.pop("people_directory_cache", None)
-                        st.success(f"Restored {person['display_name']}.")
+                        flash_status("setup_status", "success", f"Restored {person['display_name']}.")
                         st.rerun()
                     except (ValueError, GoogleSheetsSetupError) as exc:
-                        st.error(str(exc))
+                        render_status(status, "error", str(exc))
                 name_col.caption(f"{person['display_name']} · Archived")
             st.caption("Archived identities are retained for historical references.")
 
@@ -244,13 +246,15 @@ if database_ready:
     )
     selected_names = [active_by_id[person_id]["display_name"] for person_id in selected_ids]
     if len({name.casefold() for name in selected_names}) != len(selected_names):
-        st.warning(
+        render_status(
+            status,
+            "warning",
             "Two selected people have the same display name. The current bill "
             "calculator identifies participants by display name, so select only "
-            "one of them for this expense. Both identities remain in your directory."
+            "one of them for this expense. Both identities remain in your directory.",
         )
 else:
-    st.info("Connect and initialize Google Sheets to use the reusable People directory.")
+    render_status(status, "info", "Connect and initialize Google Sheets to use the reusable People directory.")
     st.subheader("Participants")
     participants_text = st.text_input(
         "Names separated by commas",
@@ -320,9 +324,11 @@ if st.button("Continue to item entry", type="primary", use_container_width=True)
             draft["items"].append(new_item())
 
         if len(draft["items"]) > int(initial_count):
-            st.info(
+            render_status(
+                status,
+                "info",
                 "Existing item rows have been preserved. Remove unwanted rows "
-                "individually on the item-entry page."
+                "individually on the item-entry page.",
             )
 
         st.session_state.pop("calculated_result", None)
@@ -330,7 +336,7 @@ if st.button("Continue to item entry", type="primary", use_container_width=True)
         st.session_state.pop("expense_saved", None)
         st.switch_page("pages/2_Item_Entry.py")
     except ValueError as exc:
-        st.error(str(exc))
+        render_status(status, "error", str(exc))
 
 
 if st.button("← Home", use_container_width=True):

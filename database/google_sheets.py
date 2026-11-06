@@ -45,6 +45,8 @@ SHEET_SCHEMA: dict[str, tuple[str, ...]] = {
         "calculation_version",
         "updated_at",
         "revision",
+        "is_archived",
+        "archived_at",
     ),
     "Participants": (
         "participant_id",
@@ -83,6 +85,28 @@ LEGACY_PEOPLE_HEADERS = (
     "display_name",
     "created_at",
     "updated_at",
+)
+LEGACY_EXPENSE_HEADERS_V2 = (
+    "expense_id",
+    "expense_name",
+    "expense_date",
+    "currency",
+    "receipt_total",
+    "subtotal",
+    "gst_enabled",
+    "gst_rate",
+    "gst_amount",
+    "service_charge_enabled",
+    "service_charge_rate",
+    "service_charge_amount",
+    "prices_are_nett",
+    "calculated_total",
+    "difference",
+    "reconciled",
+    "created_at",
+    "calculation_version",
+    "updated_at",
+    "revision",
 )
 LEGACY_EXPENSE_HEADERS = (
     "expense_id",
@@ -268,6 +292,7 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
         upgraded_legacy_tabs: list[str] = []
         people_has_existing_rows = False
         expenses_need_revision_columns = False
+        expenses_need_archive_columns = False
         for title, expected_headers in SHEET_SCHEMA.items():
             if title not in existing:
                 headers_to_write[title] = list(expected_headers)
@@ -306,6 +331,13 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
                 upgraded_legacy_tabs.append(title)
             elif title == "Expenses" and actual_headers == list(LEGACY_EXPENSE_HEADERS):
                 expenses_need_revision_columns = _has_nonempty_data_rows(
+                    service, spreadsheet_id, title
+                )
+                expenses_need_archive_columns = expenses_need_revision_columns
+                headers_to_write[title] = list(expected_headers)
+                upgraded_legacy_tabs.append(title)
+            elif title == "Expenses" and actual_headers == list(LEGACY_EXPENSE_HEADERS_V2):
+                expenses_need_archive_columns = _has_nonempty_data_rows(
                     service, spreadsheet_id, title
                 )
                 headers_to_write[title] = list(expected_headers)
@@ -362,6 +394,25 @@ def initialize_database(spreadsheet_url: str) -> dict[str, Any]:
                         "data": [
                             {"range": f"'Expenses'!S2:S{last_row}", "values": expense_rows},
                             {"range": f"'Expenses'!T2:T{last_row}", "values": [["1"] for _ in expense_rows]},
+                        ],
+                    },
+                ).execute()
+
+        if expenses_need_archive_columns:
+            # Archived state is new; all existing expenses remain active.
+            expense_ids = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range="'Expenses'!A2:A",
+            ).execute().get("values", [])
+            last_row = len(expense_ids) + 1
+            if last_row >= 2:
+                service.spreadsheets().values().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={
+                        "valueInputOption": "RAW",
+                        "data": [
+                            {"range": f"'Expenses'!U2:U{last_row}", "values": [[False] for _ in expense_ids]},
+                            {"range": f"'Expenses'!V2:V{last_row}", "values": [[""] for _ in expense_ids]},
                         ],
                     },
                 ).execute()

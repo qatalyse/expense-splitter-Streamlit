@@ -2,6 +2,7 @@
 import streamlit as st
 
 from expense_splitter import split_expense
+from ui.status import create_status_slot, render_status
 from pages.common import (
     add_item,
     build_bill_from_draft,
@@ -16,9 +17,10 @@ participants = draft["participants"]
 st.title("Enter items")
 st.caption("Add each receipt item and select everyone sharing that item.")
 st.progress(2 / 3, text="Page 2 of 3 · Item entry")
+status = create_status_slot("item_entry_status")
 
 if not participants:
-    st.warning("No participants are configured.")
+    render_status(status, "warning", "No participants are configured.")
     if st.button("Return to bill setup"):
         st.switch_page("pages/1_Bill_Setup.py")
     st.stop()
@@ -99,4 +101,4 @@ if calculate_col.button("Calculate expense", type="primary", use_container_width
         st.session_state.calculated_result = split_expense(bill)
         st.switch_page("pages/3_Results.py")
     except (ValueError, ArithmeticError) as exc:
-        st.error(str(exc))
+        render_status(status, "error", str(exc))

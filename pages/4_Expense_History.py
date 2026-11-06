@@ -5,9 +5,11 @@ import streamlit as st
 
 from database.google_sheets import GoogleSheetsSetupError
 from database.sheets_repository import list_expense_summaries
+from ui.status import create_status_slot, render_status
 
 st.title("Expense history")
 st.caption("Browse saved expenses. Item details are loaded only when you open one.")
+status = create_status_slot("history_status")
 
 spreadsheet_url = st.session_state.get("setup_spreadsheet_url", "").strip()
 if not spreadsheet_url:
@@ -17,7 +19,7 @@ if not spreadsheet_url:
         spreadsheet_url = ""
 
 if not spreadsheet_url:
-    st.warning("No Google Sheets URL is configured.")
+    render_status(status, "warning", "No Google Sheets URL is configured.")
     if st.button("Configure database"):
         st.switch_page("pages/1_Bill_Setup.py")
     st.stop()
@@ -38,12 +40,13 @@ if date_filter:
         from datetime import date as date_type
         selected_date = date_type.fromisoformat(date_filter.strip()).isoformat()
     except ValueError:
-        st.error("Enter the date as YYYY-MM-DD.")
+        render_status(status, "error", "Enter the date as YYYY-MM-DD.")
         st.stop()
 else:
     selected_date = None
 
-current_filter = (search, selected_date)
+include_archived = st.checkbox("Show archived expenses", key="history_include_archived")
+current_filter = (search, selected_date, include_archived)
 if st.session_state.get("history_previous_filter") != current_filter:
     st.session_state["history_page"] = 0
     st.session_state["history_previous_filter"] = current_filter
@@ -58,9 +61,10 @@ try:
             search=search,
             date_from=selected_date,
             date_to=selected_date,
+            include_archived=include_archived,
         )
 except (ValueError, GoogleSheetsSetupError) as exc:
-    st.error(f"Could not retrieve expense history: {exc}")
+    render_status(status, "error", f"Could not retrieve expense history: {exc}")
     st.stop()
 
 expenses = response["expenses"]
@@ -69,8 +73,8 @@ st.caption(
     "The history list loads summaries only; item breakdowns are fetched when opened."
 )
 
-if not expenses:
-    st.info("No matching saved expenses were found.")
+if not expenses and not st.session_state.get("_status_rendered_history_status", False):
+    render_status(status, "info", "No matching saved expenses were found.")
 else:
     for expense in expenses:
         expense_id = expense["expense_id"]
@@ -80,15 +84,25 @@ else:
         revision = expense.get("revision", "1")
         with st.container(border=True):
             st.markdown(f"**{name}**")
-            st.caption(f"{expense_date} · Revision {revision}")
+            archived = str(expense.get("is_archived", "FALSE")).casefold() in {"true", "1", "yes"}
+            st.caption(f"{expense_date} · Revision {revision}" + (" · Archived" if archived else ""))
             st.markdown(f"**SGD {Decimal(total):.2f}**" if total else "Total unavailable")
-            view_col, edit_col = st.columns(2)
-            if view_col.button("View breakdown", key=f"view_expense_{expense_id}", use_container_width=True):
+            view_col, edit_col, duplicate_col = st.columns(3)
+            if view_col.button("View", key=f"view_expense_{expense_id}", use_container_width=True):
                 st.session_state["history_selected_expense_id"] = expense_id
                 st.switch_page("pages/5_Expense_Detail.py")
-            if edit_col.button("Edit", key=f"edit_expense_{expense_id}", use_container_width=True):
+            if edit_col.button(
+                "Edit",
+                key=f"edit_expense_{expense_id}",
+                use_container_width=True,
+                disabled=archived,
+            ):
                 st.session_state["history_selected_expense_id"] = expense_id
                 st.session_state["history_open_for_edit"] = True
+                st.switch_page("pages/5_Expense_Detail.py")
+            if duplicate_col.button("Duplicate", key=f"duplicate_expense_{expense_id}", use_container_width=True):
+                st.session_state["history_selected_expense_id"] = expense_id
+                st.session_state["history_duplicate_requested"] = True
                 st.switch_page("pages/5_Expense_Detail.py")
 
 if page > 0:
