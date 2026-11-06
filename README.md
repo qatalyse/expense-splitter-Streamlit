@@ -80,7 +80,8 @@ The spreadsheet URL is kept in the current Streamlit session and copied into the
 - Historical breakdowns use stored `final_share` values and the shared `presentation/expense_breakdown.py` renderer. They are not recalculated, so the original copyable monospace WhatsApp breakdown is preserved.
 - Editing loads the saved data into the existing three-page workflow. Saving updates the original `expense_id`, keeps `created_at`, increments `revision`, and updates `updated_at`.
 - Child rows are replaced in one Google Sheets `spreadsheets.batchUpdate` request, preserving unchanged participant, item and allocation IDs. A revision check rejects edits opened before a newer saved revision. This is an optimistic stale-edit check, not a database-level lock.
-- After merging this change, open Bill setup and click **Initialize database** once to add `updated_at` and `revision` to the existing `Expenses` tab. Existing expense rows are retained; `updated_at` is initialized from `created_at` and `revision` to `1`.
+- Existing pre-revision 18-column expense tabs are upgraded by adding `updated_at` and `revision`; `updated_at` is initialized from `created_at` and `revision` to `1`.
+- Existing 20-column expense tabs are upgraded by adding `is_archived` and `archived_at`. Existing expenses are marked active and their archive timestamp is left blank. After merging PR #8, open Home and click **Initialize database** once to apply this additive migration. Expense rows and child records are retained.
 
 ## Application pages
 - **Home:** choose New expense or Expense history; configure and initialize the Google Sheets connection below these two actions.
