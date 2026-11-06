@@ -7,7 +7,7 @@ from database.sheets_repository import (
     draft_from_expense_details,
     historical_result_from_details,
 )
-from expense_splitter import Bill, Item, split_expense
+from expense_splitter import Bill, BillingRules, Item, split_expense
 
 
 class HistoricalExpenseTests(unittest.TestCase):
@@ -34,6 +34,7 @@ class HistoricalExpenseTests(unittest.TestCase):
                 Item("Soba", Decimal("12.00"), ["Alice"]),
                 Item("Edamame", Decimal("8.00"), ["Alice", "Bob"]),
             ],
+            billing=BillingRules(prices_are_nett=True),
             receipt_total=Decimal("20.00"),
             expense_name="Dinner",
             expense_date=date(2026, 11, 7),
@@ -125,6 +126,7 @@ class HistoricalExpenseTests(unittest.TestCase):
                 Item("Soba", Decimal("14.00"), ["Alice"]),
                 Item("Edamame", Decimal("8.00"), ["Alice", "Bob"]),
             ],
+            billing=BillingRules(prices_are_nett=True),
             receipt_total=Decimal("22.00"),
             expense_name="Dinner",
             expense_date=date(2026, 11, 7),
