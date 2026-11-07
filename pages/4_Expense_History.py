@@ -17,7 +17,7 @@ spreadsheet_url = get_spreadsheet_url()
 if not spreadsheet_url:
     render_status(status, "warning", "No Google Sheets URL is configured.")
     if st.button("Configure database"):
-        st.switch_page("pages/1_Bill_Setup.py")
+        st.switch_page("pages/0_Home.py")
     st.stop()
 
 search_col, date_col = st.columns([2, 1])
