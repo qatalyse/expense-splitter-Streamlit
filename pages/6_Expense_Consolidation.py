@@ -11,18 +11,12 @@ from database.sheets_repository import (
 )
 from presentation.share_format import format_combined_person_message
 from ui.status import create_status_slot, render_status
+from pages.common import get_spreadsheet_url
 
 st.title("Consolidate expenses")
 status = create_status_slot("consolidation_status")
 
-spreadsheet_url = st.session_state.get("setup_spreadsheet_url", "").strip()
-if not spreadsheet_url:
-    try:
-        spreadsheet_url = st.secrets.get("google_sheets", {}).get(
-            "spreadsheet_url", ""
-        ).strip()
-    except (FileNotFoundError, KeyError, RuntimeError):
-        spreadsheet_url = ""
+spreadsheet_url = get_spreadsheet_url()
 
 if not spreadsheet_url:
     render_status(status, "warning", "No Google Sheets URL is configured.")

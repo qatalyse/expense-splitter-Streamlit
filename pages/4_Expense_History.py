@@ -6,22 +6,18 @@ import streamlit as st
 from database.google_sheets import GoogleSheetsSetupError
 from database.sheets_repository import list_expense_summaries
 from ui.status import create_status_slot, render_status
+from pages.common import get_spreadsheet_url
 
 st.title("Expense history")
 st.caption("Browse saved expenses. Item details are loaded only when you open one.")
 status = create_status_slot("history_status")
 
-spreadsheet_url = st.session_state.get("setup_spreadsheet_url", "").strip()
-if not spreadsheet_url:
-    try:
-        spreadsheet_url = st.secrets.get("google_sheets", {}).get("spreadsheet_url", "").strip()
-    except (FileNotFoundError, KeyError, RuntimeError):
-        spreadsheet_url = ""
+spreadsheet_url = get_spreadsheet_url()
 
 if not spreadsheet_url:
     render_status(status, "warning", "No Google Sheets URL is configured.")
     if st.button("Configure database"):
-        st.switch_page("pages/1_Bill_Setup.py")
+        st.switch_page("pages/0_Home.py")
     st.stop()
 
 search_col, date_col = st.columns([2, 1])

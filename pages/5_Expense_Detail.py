@@ -13,18 +13,13 @@ from database.sheets_repository import (
     set_expense_archived,
 )
 from presentation.expense_breakdown import render_expense_breakdown
-from pages.common import clear_draft
+from pages.common import clear_draft, get_spreadsheet_url
 from ui.status import create_status_slot, flash_status, render_status
 
 st.title("Saved expense")
 status = create_status_slot("detail_status")
 
-spreadsheet_url = st.session_state.get("setup_spreadsheet_url", "").strip()
-if not spreadsheet_url:
-    try:
-        spreadsheet_url = st.secrets.get("google_sheets", {}).get("spreadsheet_url", "").strip()
-    except (FileNotFoundError, KeyError, RuntimeError):
-        spreadsheet_url = ""
+spreadsheet_url = get_spreadsheet_url()
 
 expense_id = st.session_state.get("history_selected_expense_id")
 if not spreadsheet_url or not expense_id:
