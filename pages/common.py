@@ -8,6 +8,49 @@ import streamlit as st
 
 from expense_splitter import Bill, BillingRules, Item
 
+SPREADSHEET_URL_STATE_KEY = "app_spreadsheet_url"
+
+
+def get_spreadsheet_url() -> str:
+    """Return the session-wide spreadsheet URL.
+
+    The app-owned key survives navigation between Streamlit pages. The legacy
+    setup_spreadsheet_url key is accepted as a migration fallback for sessions
+    created before this helper was introduced.
+    """
+    url = str(st.session_state.get(SPREADSHEET_URL_STATE_KEY, "") or "").strip()
+    if url:
+        return url
+
+    legacy_url = str(st.session_state.get("setup_spreadsheet_url", "") or "").strip()
+    if legacy_url:
+        st.session_state[SPREADSHEET_URL_STATE_KEY] = legacy_url
+        return legacy_url
+    return ""
+
+
+def set_spreadsheet_url(value: str) -> str:
+    """Persist a UI-provided URL independently of any page-scoped widget."""
+    url = str(value or "").strip()
+    previous = get_spreadsheet_url()
+    st.session_state[SPREADSHEET_URL_STATE_KEY] = url
+
+    if previous != url:
+        # Connection and schema readiness only apply to the URL that was tested.
+        for key in (
+            "sheets_connection",
+            "sheets_tested_url",
+            "sheets_database_ready_url",
+            "people_directory_cache",
+        ):
+            st.session_state.pop(key, None)
+        for key in list(st.session_state.keys()):
+            if key.startswith(("consolidation_people::", "consolidation_summaries::")):
+                st.session_state.pop(key, None)
+        st.session_state.pop("consolidation_message", None)
+    return url
+
+
 BILLING_MODES = (
     "GST + service charge",
     "GST only",
