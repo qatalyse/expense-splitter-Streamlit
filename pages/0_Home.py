@@ -6,10 +6,10 @@ from database.google_sheets import (
     initialize_database,
     test_connection,
 )
-from pages.common import clear_draft
+from pages.common import clear_draft, get_spreadsheet_url, set_spreadsheet_url
 from ui.status import render_status
 
-spreadsheet_url = st.session_state.get("setup_spreadsheet_url", "").strip()
+spreadsheet_url = get_spreadsheet_url()
 if not spreadsheet_url:
     try:
         spreadsheet_url = st.secrets.get("google_sheets", {}).get(
@@ -17,11 +17,22 @@ if not spreadsheet_url:
         ).strip()
     except (FileNotFoundError, KeyError, RuntimeError):
         spreadsheet_url = ""
+    if spreadsheet_url:
+        set_spreadsheet_url(spreadsheet_url)
+
+
+def _persist_home_spreadsheet_url() -> None:
+    set_spreadsheet_url(st.session_state.get("home_spreadsheet_url_input", ""))
+
+
+if "home_spreadsheet_url_input" not in st.session_state:
+    st.session_state["home_spreadsheet_url_input"] = spreadsheet_url
 
 left, center, right = st.columns([1, 2, 1])
 with center:
     if st.button("Create new expense", type="primary", use_container_width=True):
         clear_draft()
+        set_spreadsheet_url(spreadsheet_url)
         st.session_state["setup_spreadsheet_url"] = spreadsheet_url
         st.switch_page("pages/1_Bill_Setup.py")
 
@@ -60,12 +71,12 @@ st.divider()
 
 spreadsheet_url = st.text_input(
     "Google Sheets URL",
-    key="setup_spreadsheet_url",
-    value=spreadsheet_url,
+    key="home_spreadsheet_url_input",
+    on_change=_persist_home_spreadsheet_url,
     placeholder="https://docs.google.com/spreadsheets/d/...",
     help="The service account must have Editor access to this spreadsheet.",
 )
-current_url = spreadsheet_url.strip()
+current_url = set_spreadsheet_url(spreadsheet_url)
 
 test_col, initialize_col = st.columns(2)
 with test_col:
