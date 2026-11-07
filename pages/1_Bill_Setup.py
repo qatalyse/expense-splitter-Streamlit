@@ -14,6 +14,7 @@ from database.sheets_repository import (
 )
 from ui.status import create_status_slot, flash_status, render_status
 from pages.common import (
+    get_spreadsheet_url,
     BILLING_MODES,
     ensure_draft,
     new_item,
@@ -36,15 +37,6 @@ st.session_state.setdefault(
     "setup_initial_item_count",
     max(1, int(draft["initial_item_count"])),
 )
-
-try:
-    default_spreadsheet_url = st.secrets.get("google_sheets", {}).get(
-        "spreadsheet_url", ""
-    )
-except (FileNotFoundError, KeyError, RuntimeError):
-    default_spreadsheet_url = ""
-
-st.session_state.setdefault("setup_spreadsheet_url", default_spreadsheet_url)
 
 st.subheader("Expense details")
 expense_name = st.text_input(
@@ -88,7 +80,7 @@ initial_count = st.number_input(
 )
 
 # Database connection and initialization are managed from the Home page.
-current_url = st.session_state.get("setup_spreadsheet_url", "").strip()
+current_url = get_spreadsheet_url()
 database_ready = (
     bool(current_url)
     and st.session_state.get("sheets_database_ready_url") == current_url
